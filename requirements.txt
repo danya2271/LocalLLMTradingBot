@@ -1,3 +1,4 @@
 okx-sdk
 pandas
 ollama
+websockets
