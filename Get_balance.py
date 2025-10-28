@@ -3,12 +3,14 @@ from Logging import log_message
 from Config import *
 
 
-def GetBal():
+def GetBal(coin):
     """
     Fetches and displays the full account balance from OKX,
     including liabilities to correctly show negative balances (equity).
     """
     output_lines = []
+
+    base_currency, quote_currency = coin.split('-')
 
     try:
         # The client handles different API sections as attributes (e.g., .account, .public, .trade)
@@ -27,22 +29,23 @@ def GetBal():
             for balance in result['data'][0]['details']:
                 # Use .get() with a default value '0' for robustness
                 ccy = balance.get('ccy', 'N/A')
-                avail_bal = balance.get('availBal', '0')
-                frozen_bal = balance.get('frozenBal', '0')
+                if ccy==base_currency or ccy==quote_currency:
+                    avail_bal = balance.get('availBal', '0')
+                    frozen_bal = balance.get('frozenBal', '0')
 
-                equity = balance.get('eq', '0')
-                liabilities = balance.get('liab', '0')
-                interest = balance.get('interest', '0')
+                    equity = balance.get('eq', '0')
+                    liabilities = balance.get('liab', '0')
+                    interest = balance.get('interest', '0')
 
-                output_lines.append(f"  Currency: {ccy}")
-                output_lines.append(f"  Available Balance: {avail_bal}")
-                output_lines.append(f"  Frozen Balance: {frozen_bal}")
+                    output_lines.append(f"  Currency: {ccy}")
+                    output_lines.append(f"  Available Balance: {avail_bal}")
+                    output_lines.append(f"  Frozen Balance: {frozen_bal}")
 
-                output_lines.append(f"  Liabilities (Debt): {liabilities}")
-                output_lines.append(f"  Accrued Interest: {interest}")
-                output_lines.append(f"  Net Equity: {equity}") # This is the value that can be negative
+                    output_lines.append(f"  Liabilities (Debt): {liabilities}")
+                    output_lines.append(f"  Accrued Interest: {interest}")
+                    output_lines.append(f"  Net Equity: {equity}") # This is the value that can be negative
 
-                output_lines.append("-" * 20)
+                    output_lines.append("-" * 20)
         else:
             output_lines.append("Failed to retrieve account balance.")
             error_msg = result.get('msg') if result else "No response from API."
