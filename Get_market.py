@@ -1,48 +1,54 @@
 import requests
 import pandas as pd
 
+def human_format(num):
+    """Formats a number into a human-readable string with a 'k' for thousands."""
+    num = float(f'{num:.2g}')
+    magnitude = 0
+    while abs(num) >= 1000:
+        magnitude += 1
+        num /= 1000.0
+    return f'{int(num)}{["", "k", "M", "B", "T"][magnitude]}'
+
+
 def get_okx_market_data(instId='BTC-USDT'):
     """
-    Fetches candlestick data for a given instrument ID from the OKX API.
+    Fetches and formats candlestick data from the OKX API for concise display.
 
     Args:
         instId (str): The instrument ID (e.g., 'BTC-USDT').
 
     Returns:
-        dict: A dictionary where keys are timeframes and values are pandas DataFrames
-              containing the latest candlestick data.
+        dict: A dictionary of pandas DataFrames with formatted timestamps and volumes.
     """
     print("Info for",instId)
-    intervals = ['1m', '5m', '15m', '1H']
+    intervals = ['1m', '5m'] # Reduced intervals for brevity
     market_data = {}
     for interval in intervals:
         url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}"
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()['data']
-
-            # CORRECTED: Added column names for all 9 fields returned by the API.
             columns = [
                 'timestamp', 'open', 'high', 'low', 'close',
                 'volume', 'volume_currency', 'volume_currency_quote', 'confirm'
             ]
 
             df = pd.DataFrame(data, columns=columns)
-
             df['timestamp'] = pd.to_numeric(df['timestamp'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.strftime('%H:%M:%S')
 
-            # Convert timestamp to a readable datetime format
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-
-            # Set timestamp as the index for easier plotting and analysis
             df.set_index('timestamp', inplace=True)
 
-            # Define the columns to format
             volume_cols = ['volume', 'volume_currency', 'volume_currency_quote']
 
-            # Convert columns to numeric type and round to 2 decimal places
+            # First, ensure columns are numeric for processing
             for col in volume_cols:
-                df[col] = pd.to_numeric(df[col]).round(0).astype(int)
+                df[col] = pd.to_numeric(df[col])
+
+            # MODIFIED: Apply the human-readable formatting for display
+            for col in volume_cols:
+                df[col] = df[col].apply(human_format)
 
             market_data[interval] = df
         else:
