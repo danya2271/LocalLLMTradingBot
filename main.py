@@ -28,7 +28,14 @@ You are an autonomous trading analyst AI. Your primary objective is to maximize 
         print(f"--- {timeframe} Data ---")
         bot.add_to_message(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
-            out = data.sort_index().tail(50)
+            if timeframe == '1m':
+                out = data.sort_index().tail(30)
+            if timeframe == '5m':
+                out = data.sort_index().tail(20)
+            if timeframe == '15m':
+                out = data.sort_index().tail(15)
+            if timeframe == '1H':
+                out = data.sort_index().tail(10)
             # Sort by timestamp to ensure the latest data is last
             print(out)
             log_message(out)
