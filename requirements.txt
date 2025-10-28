@@ -1,1 +1,3 @@
 okx-sdk
+pandas
+ollama
