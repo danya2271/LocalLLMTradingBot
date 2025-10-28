@@ -20,7 +20,7 @@ def GetBal():
 
         # Check if the API call was successful by inspecting the 'code' key
         if result and result.get('code') == '0':
-            output_lines.append("Successfully connected to the OKX API.")
+            # output_lines.append("Successfully connected to the OKX API.")
             output_lines.append("Account Balance:")
 
             # The balance details are in the 'data' field, which is a list
