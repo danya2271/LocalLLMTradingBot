@@ -15,16 +15,16 @@ def HInfoSend(risk,coin):
     for timeframe, data in btc_market_data.items():
         print(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
+            out = data.sort_index().tail(50)
             # Sort by timestamp to ensure the latest data is last
-            print(data.sort_index().tail(50))
-            log_message(data.sort_index().tail(50))
-            bot.add_to_message(data.sort_index().tail(50))
-            bot.send_and_reset_message()
+            print(out)
+            log_message(out)
+            bot.add_to_message(out.to_string())
         else:
             print(data)
             log_message(data)
-            bot.add_to_message(data)
-            bot.send_and_reset_message()
+            bot.add_to_message(data.to_string())
+    print(bot.send_and_reset_message())
 
 if __name__ == '__main__':
     interval_seconds = 300
