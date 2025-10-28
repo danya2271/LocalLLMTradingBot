@@ -14,6 +14,7 @@ def HInfoSend(risk,coin):
     btc_market_data = get_okx_market_data(coin)
     for timeframe, data in btc_market_data.items():
         print(f"--- {timeframe} Data ---")
+        bot.add_to_message(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
             out = data.sort_index().tail(50)
             # Sort by timestamp to ensure the latest data is last
