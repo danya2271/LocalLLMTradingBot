@@ -2,7 +2,12 @@ from okx import OkxRestClient
 from Logging import log_message
 from Config import *
 
+
 def GetBal():
+    """
+    Fetches and displays the full account balance from OKX,
+    including liabilities to correctly show negative balances (equity).
+    """
     output_lines = []
 
     try:
@@ -17,19 +22,42 @@ def GetBal():
         if result and result.get('code') == '0':
             output_lines.append("Successfully connected to the OKX API.")
             output_lines.append("Account Balance:")
+
             # The balance details are in the 'data' field, which is a list
             for balance in result['data'][0]['details']:
-                output_lines.append(f"  Currency: {balance['ccy']}")
-                output_lines.append(f"  Available Balance: {balance['availBal']}")
-                output_lines.append(f"  Frozen Balance: {balance['frozenBal']}")
+                # Use .get() with a default value '0' for robustness
+                ccy = balance.get('ccy', 'N/A')
+                avail_bal = balance.get('availBal', '0')
+                frozen_bal = balance.get('frozenBal', '0')
+
+                equity = balance.get('eq', '0')
+                liabilities = balance.get('liab', '0')
+                interest = balance.get('interest', '0')
+
+                output_lines.append(f"  Currency: {ccy}")
+                output_lines.append(f"  Available Balance: {avail_bal}")
+                output_lines.append(f"  Frozen Balance: {frozen_bal}")
+
+                output_lines.append(f"  Liabilities (Debt): {liabilities}")
+                output_lines.append(f"  Accrued Interest: {interest}")
+                output_lines.append(f"  Net Equity: {equity}") # This is the value that can be negative
+
                 output_lines.append("-" * 20)
         else:
             output_lines.append("Failed to retrieve account balance.")
             error_msg = result.get('msg') if result else "No response from API."
             output_lines.append(f"Error details: {error_msg}")
 
-        log_message("\n".join(output_lines))
-        return "\n".join(output_lines)
+        final_output = "\n".join(output_lines)
+        log_message(final_output)
+        return final_output
 
     except Exception as e:
-        output_lines.append(f"An error occurred: {e}")
+        import traceback
+        error_details = traceback.format_exc()
+        output_lines.append(f"An unexpected error occurred: {e}")
+        output_lines.append(error_details)
+
+        final_output = "\n".join(output_lines)
+        log_message(final_output)
+        return final_output
