@@ -75,6 +75,38 @@ class OKXTrader:
 
         return "\n".join(output_lines)
 
+    def get_open_positions(self, instrument_id=None):
+        """
+        Retrieves and formats a list of all open positions.
+        """
+        print(f"\n-> Requesting open positions{' for ' + instrument_id if instrument_id else ''}...")
+        output_lines = []
+        try:
+            # Positions are part of the Account API
+            result = self.account_api.get_positions(
+                instType='MARGIN',
+                instId=instrument_id
+            )
+            if result.get('code') == '0':
+                positions = result.get('data', [])
+                if positions and positions[0].get('pos') != '0': # API can return empty data with 'pos'='0'
+                    output_lines.append(f"Found {len(positions)} open position(s):")
+                    for pos in positions:
+                        output_lines.append(
+                            f"  - Instrument: {pos.get('instId')}, "
+                            f"Side: {pos.get('posSide')}, "
+                            f"Size: {pos.get('pos')}, "
+                            f"Avg Price: {pos.get('avgPx')}, "
+                            f"Unrealized P/L: {pos.get('upl')}"
+                        )
+                else:
+                    output_lines.append("No open positions found.")
+            else:
+                output_lines.append(f"❌ Error getting positions: {result.get('msg')}")
+        except Exception as e:
+            output_lines.append(f"❌ A critical error occurred during the API call: {e}")
+        return "\n".join(output_lines)
+
 # --- USAGE EXAMPLE ---
 if __name__ == "__main__":
     trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
