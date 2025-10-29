@@ -1,3 +1,4 @@
+python-okx
 okx-sdk
 pandas
 ollama
