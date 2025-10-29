@@ -4,12 +4,16 @@ import pandas as pd
 import time
 from Logging import log_message
 from OllamaInteract import OllamaBot
+from OKXinteract import OKXTrader
+from Config import *
 
+trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
 bot = OllamaBot()
 
 def HInfoSend(risk,coin):
     formatted_coin = coin.replace('-', '/')
     Bal = GetBal(coin)
+    open_orders_info = trader.get_open_orders(coin)
     print(Bal)
     btc_market_data = get_okx_market_data(coin)
     for timeframe, data in btc_market_data.items():
@@ -41,9 +45,10 @@ You are an autonomous trading analyst AI. Your primary objective is to maximize 
     *   When issuing a `BUY` order, you can only use up to 350% of the available USDT balance.
     *   When issuing a `SELL` order, you can only sell up to 350% of the available BTC balance.
 4.  **Logical Reasoning**: Before stating your final decision, you must provide a brief, step-by-step analysis of the market data. Consider the trends, volume, and any potential patterns across the different timeframes.
-5.  **Strict Output Format**: Your final response must be a JSON object. No other text or explanation should come after the JSON object.
+5.  **Strict Output Format**: Your final response must be a JSON object. No other text or explanation should come after the JSON object. Available commands: SELL,BUY,HOLD,CANCEL[ORDER_ID]
 """)
     bot.add_to_message(Bal)
+    bot.add_to_message(open_orders_info)
     print(bot.send_and_reset_message())
 
 if __name__ == '__main__':
