@@ -5,15 +5,16 @@ import time
 from Logging import log_message
 from OllamaInteract import OllamaBot
 from OKXinteract import OKXTrader
+from ParseFuncLLM import parse_and_execute_command
 from Config import *
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
 bot = OllamaBot()
 
 def HInfoSend(risk,coin):
-    formatted_coin = coin.replace('-', '/')
     Bal = GetBal(coin)
     open_orders_info = trader.get_open_orders(coin)
+    max_order_limits = trader.get_max_order_limits(coin)
     print(Bal)
     btc_market_data = get_okx_market_data(coin)
     for timeframe, data in btc_market_data.items():
@@ -36,20 +37,23 @@ def HInfoSend(risk,coin):
             print(data)
             log_message(data)
             bot.add_to_message(data.to_string())
-    bot.add_to_message("""
-You are an autonomous trading analyst AI. Your primary objective is to maximize the USDT balance of the account by trading the {formatted_coin} pair. You must operate under the following rules:
+    bot.add_to_message(F"""
+You are an autonomous trading analyst AI. Your primary objective is to maximize the USDT balance of the account by trading the {coin} pair. You must operate under the following rules:
 
-1.  **Analyze the Data**: You will be given the current account balance and recent candlestick data for {formatted_coin} across multiple timeframes (1-hour, 15-minute, 5-minute, and 1-minute).
-2.  **Make a Single Decision**: Based on your analysis, you must choose one of four actions: `BUY`, `SELL`, `CANCEL[ORDER_ID]`, or `HOLD`.
+1.  **Analyze the Data**: You will be given the current account balance and recent candlestick data for {coin} across multiple timeframes (1-hour, 15-minute, 5-minute, and 1-minute).
+2.  **Make a Single Decision**: Based on your analysis, you must choose one of four actions: `BUY[PRICE][QUANTITY][{coin}]`, `SELL[PRICE][QUANTITY][{coin}]`, `CANCEL[ORDER_ID]`, or `HOLD`.
 3.  **Risk Management**:
-    *   When issuing a `BUY` order, you can only use up to 350% of the available USDT balance.
-    *   When issuing a `SELL` order, you can only sell up to 350% of the available BTC balance.
+    *   When issuing a `BUY` order, you can only use up to 75% of the available USDT balance.
+    *   When issuing a `SELL` order, you can only sell up to 35% of the available BTC balance.
 4.  **Logical Reasoning**: Before stating your final decision, you must provide a brief, step-by-step analysis of the market data. Consider the trends, volume, and any potential patterns across the different timeframes.
 5.  **Strict Output Format**: Your final response must be a JSON object. No other text or explanation should come after the JSON object.
 """)
     bot.add_to_message(Bal)
     bot.add_to_message(open_orders_info)
-    print(bot.send_and_reset_message())
+    bot.add_to_message(max_order_limits)
+    llm_answ = bot.send_and_reset_message()
+    print(llm_answ)
+    parse_and_execute_command(trader, llm_answ)
 
 if __name__ == '__main__':
     interval_seconds = 300
