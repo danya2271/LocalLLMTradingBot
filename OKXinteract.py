@@ -36,7 +36,7 @@ class OKXTrader:
     def place_limit_order_with_leverage(self, instrument_id, side, size, price):
         print(f"\n-> Placing {side.upper()} limit order: {size} {instrument_id} at price {price}...")
         try:
-            result = self.trade_api.place_order(instId=instrument_id, tdMode='cross', side=side, ordType='limit', sz=str(size), px=str(price), ccy='USDT')
+            result = self.trade_api.place_order(instId=instrument_id, tdMode='cross', side=side, ordType='limit', sz=f'{size:.8f}', px=str(price), ccy='USDT')
             if result.get('code') == '0':
                 return f"✅ Order placed successfully! Order ID: {result['data'][0].get('ordId')}"
             else:
