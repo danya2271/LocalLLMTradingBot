@@ -7,6 +7,8 @@ from OllamaInteract import OllamaBot
 from OKXinteract import OKXTrader
 from ParseFuncLLM import parse_and_execute_commands
 from Config import *
+from TelegramConfig import *
+from TelegramInteract import send_message_to_all_users
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
 bot = OllamaBot()
@@ -70,6 +72,7 @@ You are an autonomous trading analyst AI. Your primary objective is to maximize 
     bot.add_to_message(open_positions_info)
     llm_answ = bot.send_and_reset_message()
     print(llm_answ)
+    send_message_to_all_users(TELEGRAM_BOT_TOKEN, TELEGRAM_USER_IDS, llm_answ)
     parse_and_execute_commands(trader, llm_answ)
 
 if __name__ == '__main__':
