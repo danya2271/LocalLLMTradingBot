@@ -54,7 +54,7 @@ You are an autonomous trading analyst AI. Your primary objective is to maximize 
     bot.add_to_message(Bal)
     bot.add_to_message(open_orders_info)
     bot.add_to_message(max_order_limits)
-    #bot.add_to_message(open_positions_info)
+    bot.add_to_message(open_positions_info)
     llm_answ = bot.send_and_reset_message()
     print(llm_answ)
     parse_and_execute_commands(trader, llm_answ)
