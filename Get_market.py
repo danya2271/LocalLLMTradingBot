@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+import time
 
 def human_format(num):
     """Formats a number into a human-readable string with a 'k' for thousands."""
@@ -14,6 +15,7 @@ def human_format(num):
 def get_okx_market_data(instId='BTC-USDT'):
     """
     Fetches and formats candlestick data from the OKX API for concise display.
+    *** FIX: Uses 'after' parameter to correctly fetch data before the current time. ***
 
     Args:
         instId (str): The instrument ID (e.g., 'BTC-USDT').
@@ -21,14 +23,26 @@ def get_okx_market_data(instId='BTC-USDT'):
     Returns:
         dict: A dictionary of pandas DataFrames with formatted timestamps and volumes.
     """
-    print("Info for",instId)
-    intervals = ['1m', '5m', '1H'] # Reduced intervals for brevity
+    print("Info for", instId)
+    intervals = ['1m', '5m', '1H']
     market_data = {}
+
+    # Get a single timestamp to synchronize all API calls.
+    end_timestamp = int(time.time() * 1000)
+
     for interval in intervals:
-        url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}"
+        # --- FIX: Changed 'before' to 'after' ---
+        # Per OKX's confusing documentation, 'after' is used to get data OLDER than the timestamp.
+        # This now correctly asks for the most recent candles leading up to the current time.
+        url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}&after={end_timestamp}"
+
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()['data']
+            if not data:
+                market_data[interval] = "No data returned from API for this timeframe."
+                continue
+
             columns = [
                 'timestamp', 'open', 'high', 'low', 'close',
                 'volume', 'volume_currency', 'volume_currency_quote', 'confirm'
@@ -36,18 +50,16 @@ def get_okx_market_data(instId='BTC-USDT'):
 
             df = pd.DataFrame(data, columns=columns)
             df['timestamp'] = pd.to_numeric(df['timestamp'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.strftime('%H:%M:%S')
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.strftime('%H:%M')
 
             df.set_index('timestamp', inplace=True)
+            # Reverse the DataFrame so the latest data is at the bottom
+            df = df.iloc[::-1]
 
             volume_cols = ['volume', 'volume_currency', 'volume_currency_quote']
 
-            # First, ensure columns are numeric for processing
             for col in volume_cols:
                 df[col] = pd.to_numeric(df[col])
-
-            # MODIFIED: Apply the human-readable formatting for display
-            for col in volume_cols:
                 df[col] = df[col].apply(human_format)
 
             market_data[interval] = df
@@ -62,7 +74,6 @@ if __name__ == '__main__':
     for timeframe, data in btc_market_data.items():
         print(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
-            # Sort by timestamp to ensure the latest data is last
-            print(data.sort_index().tail(50))
+            print(data.tail(10))
         else:
             print(data)
