@@ -25,7 +25,7 @@ def HInfoSend(risk,coin):
             if timeframe == '1m':
                 out = data.sort_index().tail(30)
             if timeframe == '5m':
-                out = data.sort_index().tail(20)
+                out = data.sort_index().tail(30)
             if timeframe == '15m':
                 out = data.sort_index().tail(15)
             if timeframe == '1H':
