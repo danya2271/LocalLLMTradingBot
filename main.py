@@ -5,7 +5,7 @@ import time
 from Logging import log_message
 from OllamaInteract import OllamaBot
 from OKXinteract import OKXTrader
-from ParseFuncLLM import parse_and_execute_command
+from ParseFuncLLM import parse_and_execute_commands
 from Config import *
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
@@ -42,7 +42,9 @@ def HInfoSend(risk,coin):
 You are an autonomous trading analyst AI. Your primary objective is to maximize the USDT balance of the account by trading the {coin} pair. You must operate under the following rules:
 
 1.  **Analyze the Data**: You will be given the current account balance and recent candlestick data for {coin} across multiple timeframes (1-hour, 15-minute, 5-minute, and 1-minute).
-2.  **Make a Single Decision**: Based on your analysis, you must choose one of four actions: `BUY[PRICE][QUANTITY][{coin}]`, `SELL[PRICE][QUANTITY][{coin}]`, `CANCEL[ORDER_ID][{coin}]`, or `HOLD`.
+2.  **Make a Decision**: Based on your analysis, you must define a list of actions to be executed. The available actions are: BUY[PRICE][QUANTITY][{coin}], SELL[PRICE][QUANTITY][{coin}], CANCEL[ORDER_ID][{coin}], and HOLD.
+    You can include one or more actions in your response.
+    If you decide to take no action, use HOLD. The HOLD action must be the only action in the list.
 3.  **Risk Management**:
     *   When issuing a `BUY` order, you can only use up to 75% of the available USDT balance.
     *   When issuing a `SELL` order, you can only sell up to 35% of the available BTC balance.
@@ -55,7 +57,7 @@ You are an autonomous trading analyst AI. Your primary objective is to maximize 
     bot.add_to_message(open_positions_info)
     llm_answ = bot.send_and_reset_message()
     print(llm_answ)
-    parse_and_execute_command(trader, llm_answ)
+    parse_and_execute_commands(trader, llm_answ)
 
 if __name__ == '__main__':
     interval_seconds = 300
