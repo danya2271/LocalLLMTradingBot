@@ -22,7 +22,7 @@ def get_okx_market_data(instId='BTC-USDT'):
         dict: A dictionary of pandas DataFrames with formatted timestamps and volumes.
     """
     print("Info for",instId)
-    intervals = ['1m', '5m'] # Reduced intervals for brevity
+    intervals = ['1m', '5m', '1H'] # Reduced intervals for brevity
     market_data = {}
     for interval in intervals:
         url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}"
