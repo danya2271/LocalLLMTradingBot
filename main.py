@@ -60,7 +60,7 @@ You are an autonomous trading analyst AI. Your primary objective is to maximize 
     parse_and_execute_commands(trader, llm_answ)
 
 if __name__ == '__main__':
-    interval_seconds = 300
+    interval_seconds = 150
 
     try:
         print("Starting the loop. Press Ctrl+C to stop.")
