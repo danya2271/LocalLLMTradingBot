@@ -82,7 +82,7 @@ if __name__ == '__main__':
     telegram_thread = threading.Thread(target=poll_telegram_updates, args=(TELEGRAM_BOT_TOKEN,), daemon=True)
     telegram_thread.start()
 
-    interval_seconds = 150
+    interval_seconds = 30
 
     try:
         print("Starting the main trading loop. Press Ctrl+C to stop.")
