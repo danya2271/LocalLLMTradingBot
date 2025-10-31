@@ -25,13 +25,13 @@ def HInfoSend(risk,coin):
         bot.add_to_message(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
             if timeframe == '1m':
-                out = data.tail(30)
+                out = data.tail(40)
             if timeframe == '5m':
                 out = data.tail(20)
             if timeframe == '15m':
                 out = data.tail(15)
             if timeframe == '1H':
-                out = data.tail(10)
+                out = data.tail(0)
             # Sort by timestamp to ensure the latest data is last
             print(out)
             log_message(out)
