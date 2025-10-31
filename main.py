@@ -1,14 +1,16 @@
-from Get_market import get_okx_market_data
-from Get_balance import GetBal
+
 import pandas as pd
 import time
+import threading
+from Get_market import get_okx_market_data
+from Get_balance import GetBal
 from Logging import log_message
 from OllamaInteract import OllamaBot
 from OKXinteract import OKXTrader
 from ParseFuncLLM import parse_and_execute_commands
 from Config import *
 from TelegramConfig import *
-from TelegramInteract import send_message_to_all_users
+from TelegramInteract import send_message_to_all_users, get_trading_coin, poll_telegram_updates
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
 bot = OllamaBot()
@@ -76,14 +78,25 @@ You are an autonomous trading analyst AI. Your primary objective is to maximize 
     parse_and_execute_commands(trader, llm_answ)
 
 if __name__ == '__main__':
+    # Start the Telegram listener in a background thread
+    telegram_thread = threading.Thread(target=poll_telegram_updates, args=(TELEGRAM_BOT_TOKEN,), daemon=True)
+    telegram_thread.start()
+
     interval_seconds = 150
 
     try:
-        print("Starting the loop. Press Ctrl+C to stop.")
+        print("Starting the main trading loop. Press Ctrl+C to stop.")
         while True:
-            HInfoSend(0,'BTC-USDT')
-            print(f"--- Waiting for {interval_seconds / 60:.0f} minutes before next run... ---")
+            # Get the current coin to trade from the config file
+            current_coin = get_trading_coin()
+            print(f"\n--- Running analysis for {current_coin} ---")
+
+            # Run the main trading logic
+            HInfoSend(0, current_coin)
+
+            print(f"--- Waiting for {interval_seconds / 60:.1f} minutes before next run... ---")
             time.sleep(interval_seconds)
 
     except KeyboardInterrupt:
         print("\nLoop stopped by user. Exiting.")
+
