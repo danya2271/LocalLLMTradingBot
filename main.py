@@ -43,7 +43,7 @@ def HInfoSend(risk,coin):
             print(data)
             log_message(data)
             bot.add_to_message(data.to_string())
-    bot.add_to_message(current_price)
+    bot.add_to_message(f"Current {coin} Price: {current_price}")
     bot.add_to_message(F"""
 You are an autonomous trading analyst AI. Your primary objective is to maximize the USDT balance of the account by trading the {coin} pair. You must operate under the following rules:
 
