@@ -68,8 +68,32 @@ def get_okx_market_data(instId='BTC-USDT'):
 
     return market_data
 
+
+def get_okx_current_price(instId='BTC-USDT'):
+    """
+    Fetches the current price of a trading pair from the OKX API.
+
+    Args:
+        instId (str): The instrument ID (e.g., 'BTC-USDT').
+
+    Returns:
+        str: The last traded price as a string, or an error message.
+    """
+    url = f"https://www.okx.com/api/v5/market/ticker?instId={instId}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()['data']
+        if data:
+            return data[0]['last']
+        else:
+            return "No data returned from API for this instrument."
+    else:
+        return f"Error fetching current price: {response.text}"
+
+
 # Example usage:
 if __name__ == '__main__':
+    # Get and display candlestick data
     btc_market_data = get_okx_market_data('BTC-USDT')
     for timeframe, data in btc_market_data.items():
         print(f"--- {timeframe} Data ---")
@@ -77,3 +101,9 @@ if __name__ == '__main__':
             print(data.tail(10))
         else:
             print(data)
+
+    print("\n" + "="*30 + "\n")
+
+    # Get and display the current price
+    current_price = get_okx_current_price('BTC-USDT')
+    print(f"Current BTC-USDT Price: {current_price}")

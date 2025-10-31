@@ -2,7 +2,7 @@
 import pandas as pd
 import time
 import threading
-from Get_market import get_okx_market_data
+from Get_market import get_okx_market_data, get_okx_current_price
 from Get_balance import GetBal
 from Logging import log_message
 from OllamaInteract import OllamaBot
@@ -20,6 +20,7 @@ def HInfoSend(risk,coin):
     open_orders_info = trader.get_open_orders(coin)
     open_positions_info = trader.get_open_positions(coin)
     max_order_limits = trader.get_max_order_limits(coin)
+    current_price = get_okx_current_price(coin)
     print(Bal)
     btc_market_data = get_okx_market_data(coin)
     for timeframe, data in btc_market_data.items():
@@ -42,6 +43,7 @@ def HInfoSend(risk,coin):
             print(data)
             log_message(data)
             bot.add_to_message(data.to_string())
+    bot.add_to_message(current_price)
     bot.add_to_message(F"""
 You are an autonomous trading analyst AI. Your primary objective is to maximize the USDT balance of the account by trading the {coin} pair. You must operate under the following rules:
 
