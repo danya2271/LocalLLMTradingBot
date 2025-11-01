@@ -75,7 +75,7 @@ This is an example of a perfect response.
 {{
   "reasoning": "Analysis: The 1m and 5m charts show a bullish crossover, with increasing volume on the last three candles. Price has broken above the recent resistance level. Decision: I will place a BUY order for 50% of the max buy limit to capitalize on the upward momentum while managing risk.",
   "actions": [
-    "BUY[110150.5][0.5][{coin}]"
+    "BUY[{current_price}][0.5][{coin}]"
   ]
 }}
 ```
