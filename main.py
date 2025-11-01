@@ -5,7 +5,7 @@ import threading
 from Get_market import get_okx_market_data, get_okx_current_price
 from Get_balance import GetBal
 from Logging import log_message
-from OllamaInteract import OllamaBot
+from OllamaInteract import OllamaBot #TODO shift to llama.cpp
 from OKXinteract import OKXTrader
 from ParseFuncLLM import parse_and_execute_commands
 from Config import *
@@ -27,6 +27,7 @@ def HInfoSend(risk,coin):
         print(f"--- {timeframe} Data ---")
         bot.add_to_message(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
+            #TODO make this configurable through Telegram
             if timeframe == '1m':
                 out = data.tail(80)
             if timeframe == '5m':
