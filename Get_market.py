@@ -6,7 +6,6 @@ pd.set_option("display.max_rows", None)
 def human_format(num):
     """
     A helper function to format large numbers into a human-readable string (e.g., 1000 -> 1K).
-    This is a placeholder for the function used in your original code.
     """
     if num is None:
         return 'N/A'
@@ -19,31 +18,30 @@ def human_format(num):
 
 def get_okx_market_data(instId='BTC-USDT'):
     """
-    Fetches and formats candlestick data from the OKX API for concise display.
-    *** MODIFIED: Now only processes 'close' and volume columns. ***
+    Fetches and formats candlestick data from the OKX API.
 
     Args:
         instId (str): The instrument ID (e.g., 'BTC-USDT').
 
     Returns:
-        dict: A dictionary of pandas DataFrames with formatted timestamps, close prices, and volumes.
+        dict: A dictionary of pandas DataFrames containing the requested market data.
     """
     print("Fetching candlestick info for", instId)
     intervals = ['1m', '5m', '1H']
     market_data = {}
 
-    end_timestamp = int(time.time() * 1000)
-
     for interval in intervals:
-        url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}&after={end_timestamp}"
+        # This is the most reliable way to get the latest 100 candles from the API.
+        url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}"
 
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json().get('data')
             if not data:
-                market_data[interval] = "No data returned from API for this timeframe."
+                market_data[interval] = f"No data returned from API for {interval}. The endpoint may be temporarily unavailable or the pair is not traded."
                 continue
 
+            # Full list of columns returned by the API
             columns = [
                 'timestamp', 'open', 'high', 'low', 'close',
                 'volume', 'volume_currency', 'volume_currency_quote', 'confirm'
@@ -51,24 +49,30 @@ def get_okx_market_data(instId='BTC-USDT'):
 
             df = pd.DataFrame(data, columns=columns)
 
-            # Select only the columns we need
-            df = df[['timestamp', 'close', 'volume', 'volume_currency']]
+            # Select only the required columns
+            df = df[['timestamp', 'high', 'low', 'close', 'volume', 'confirm']]
 
+            # Convert timestamp to a readable format
             df['timestamp'] = pd.to_numeric(df['timestamp'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.strftime('%H:%M')
 
+            # Convert data columns to numeric types
+            numeric_cols = ['high', 'low', 'close', 'volume']
+            for col in numeric_cols:
+                df[col] = pd.to_numeric(df[col])
+
+            # Set timestamp as the index
             df.set_index('timestamp', inplace=True)
-            # Reverse the DataFrame so the latest data is at the bottom
+
+            # The API returns the latest data first, so we reverse it to have time ascend.
             df = df.iloc[::-1]
 
-            # Format volume columns
-            for col in ['volume', 'volume_currency']:
-                df[col] = pd.to_numeric(df[col])
-                df[col] = df[col].apply(human_format)
+            # Format only the 'volume' column
+            df['volume'] = df['volume'].apply(human_format)
 
             market_data[interval] = df
         else:
-            market_data[interval] = f"Error fetching data for {interval}: {response.text}"
+            market_data[interval] = f"Error fetching data for {interval}: Status {response.status_code} - {response.text}"
 
     return market_data
 
@@ -100,8 +104,9 @@ if __name__ == '__main__':
     # Get and display candlestick data
     btc_market_data = get_okx_market_data('BTC-USDT')
     for timeframe, data in btc_market_data.items():
-        print(f"--- {timeframe} Data ---")
+        print(f"\n--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
+            # Display the last 70 rows to keep the output manageable
             print(data.tail(70))
         else:
             print(data)
@@ -111,4 +116,3 @@ if __name__ == '__main__':
     # Get and display the current price
     current_price = get_okx_current_price('BTC-USDT')
     print(f"Current BTC-USDT Price: {current_price}")
-
