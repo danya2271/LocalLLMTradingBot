@@ -1,6 +1,7 @@
 import json
 import re
 from OKXinteract import OKXTrader
+from Get_market import get_okx_current_price
 from Config import *
 
 def parse_and_execute_commands(trader, llm_response: str):
@@ -53,9 +54,17 @@ def parse_and_execute_commands(trader, llm_response: str):
         if trade_match:
             action, price_str, quantity_str, instrument_id = trade_match.groups()
             try:
+                cur_price = float(get_okx_current_price(instrument_id))
                 price = float(price_str)
                 quantity = float(quantity_str)
-                side = 'buy' if action == 'BUY' else 'sell'
+                if action == 'BUY':
+                    side = 'buy'
+                    if cur_price >= price:
+                        price *= 0.999 #TODO: make this adjustable through telegram
+                else:
+                    side = 'sell'
+                    if cur_price <= price:
+                        price *= 1.00 #TODO: make this adjustable through telegram
                 result = trader.place_limit_order_with_leverage(instrument_id, side, quantity, price)
                 results.append(result)
             except ValueError:
