@@ -79,13 +79,17 @@ class OKXTrader:
 
     def get_open_positions(self, instrument_id=None):
         """
-        Retrieves and formats a list of all open positions.
-        *** FIX 2: Uses P/L and price data to correctly determine LONG/SHORT for 'net' positions. ***
+        Retrieves and formats open MARGIN positions.
+        This function is robustly designed for CROSS MARGIN, which always returns 'posSide: "net"'.
+        It uses a fallback P/L analysis to correctly deduce the long/short direction.
         """
-        print(f"\n-> Requesting open positions{' for ' + instrument_id if instrument_id else ''}...")
+        instrument_type = 'MARGIN'
+
+        print(f"\n-> Requesting open positions for {instrument_type}{' on ' + instrument_id if instrument_id else ''}...")
         output_lines = []
         try:
-            result = self.account_api.get_positions(instType='MARGIN', instId=instrument_id)
+            result = self.account_api.get_positions(instType=instrument_type, instId=instrument_id)
+
             if result.get('code') == '0':
                 positions = result.get('data', [])
                 active_positions = [p for p in positions if p.get('pos') and float(p.get('pos')) != 0]
@@ -94,47 +98,44 @@ class OKXTrader:
                     output_lines.append(f"Found {len(active_positions)} open position(s):")
                     for pos in active_positions:
                         pos_side_from_api = pos.get('posSide')
+                        mgn_mode = pos.get('mgnMode')
                         display_side = "UNKNOWN"
 
-                        # --- START OF NEW LOGIC ---
-                        if pos_side_from_api in ['long', 'short']:
-                            display_side = pos_side_from_api.upper()
-                        elif pos_side_from_api == 'net':
+                        if pos_side_from_api == 'net':
                             try:
-                                # Use price and P/L to determine the true side
                                 avg_px = float(pos.get('avgPx'))
                                 mark_px = float(pos.get('markPx'))
                                 upl = float(pos.get('upl'))
 
-                                if mark_px > avg_px:
-                                    # Price went up. If P/L is positive, it's a LONG. If negative, it's a SHORT.
-                                    display_side = 'LONG' if upl >= 0 else 'SHORT'
-                                elif mark_px < avg_px:
-                                    # Price went down. If P/L is positive, it's a SHORT. If negative, it's a LONG.
-                                    display_side = 'SHORT' if upl >= 0 else 'LONG'
+                                if upl == 0 or avg_px == mark_px:
+                                    display_side = 'NEUTRAL (from net)'
                                 else:
-                                    # Prices are equal, side is neutral until there's P/L
-                                    display_side = 'NEUTRAL'
+                                    price_delta = mark_px - avg_px
+                                    if (price_delta * upl) > 0:
+                                        display_side = 'LONG (from net)'
+                                    elif (price_delta * upl) < 0:
+                                        display_side = 'SHORT (from net)'
+                            except (ValueError, TypeError, ZeroDivisionError):
+                                display_side = 'INSUFFICIENT_DATA (from net)'
 
-                            except (ValueError, TypeError):
-                                display_side = 'INSUFFICIENT_DATA'
-                        # --- END OF NEW LOGIC ---
+                        elif pos_side_from_api in ['long', 'short']:
+                            display_side = pos_side_from_api.upper()
 
                         output_lines.append(
                             f"  - Instrument: {pos.get('instId')}, "
+                            f"Mode: {mgn_mode}, "
                             f"Side: {display_side}, "
-                            # NOTE: The 'Size' field from the API remains ambiguous.
-                            # For now, we report what the API gives us but acknowledge it can be misleading.
-                            f"Size (from API): {pos.get('pos')}, "
+                            f"Size: {pos.get('pos')}, "
                             f"Avg Price: {pos.get('avgPx')}, "
                             f"Unrealized P/L: {pos.get('upl')}"
                         )
                 else:
-                    output_lines.append("No open positions found.")
+                    output_lines.append(f"No open positions found for {instrument_type}.")
             else:
                 output_lines.append(f"❌ Error getting positions: {result.get('msg')}")
         except Exception as e:
             output_lines.append(f"❌ A critical error occurred during the API call: {e}")
+
         return "\n".join(output_lines)
 
 # --- USAGE EXAMPLE ---
