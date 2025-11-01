@@ -5,3 +5,4 @@ __pycache__
 data
 coin_config.txt
 last_update_id.txt
+data_config.json

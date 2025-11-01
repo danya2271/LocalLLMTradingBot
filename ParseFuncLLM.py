@@ -3,6 +3,7 @@ import re
 from OKXinteract import OKXTrader
 from Get_market import get_okx_current_price
 from Config import *
+from TelegramInteract import get_slippage_config
 
 def parse_and_execute_commands(trader, llm_response: str):
     """
@@ -21,33 +22,30 @@ def parse_and_execute_commands(trader, llm_response: str):
         if json_start != -1 and json_end != -1:
             json_str = cleaned_text[json_start : json_end + 1]
             data = json.loads(json_str)
-
-            # Prefer the 'actions' key for multiple commands
             if 'actions' in data and isinstance(data['actions'], list):
                 commands_to_parse = data['actions']
-            # Fallback for a single 'action'
             elif 'action' in data:
                 commands_to_parse.append(data['action'])
             else:
                 return "❌ Action: UNKNOWN. Found JSON but it is missing the 'actions' or 'action' key."
         else:
             return "❌ Action: UNKNOWN. No valid JSON block found in the response."
-
     except json.JSONDecodeError:
         return "❌ Action: UNKNOWN. Malformed JSON detected in the response."
 
     print(f"Found commands to parse: {commands_to_parse}")
 
-    # --- Step 2: Parse and execute each extracted command ---
     if not commands_to_parse:
         return "❌ Action: UNKNOWN. The JSON did not contain any commands to execute."
 
+    slippage_config = get_slippage_config()
+    buy_slippage_multiplier = 1 - (slippage_config.get('buy_slippage', 0.1) / 100.0)
+    sell_slippage_multiplier = 1 + (slippage_config.get('sell_slippage', 0.1) / 100.0)
+
     for command_str in commands_to_parse:
         command = command_str.strip().upper()
-
         trade_pattern = r'^(BUY|SELL)\[([\d.]+)\]\[([\d.]+)\]\[([A-Z-]+)\]$'
         cancel_pattern = r'^CANCEL\[(\w+)\]\[([A-Z-]+)\]$'
-
         trade_match = re.match(trade_pattern, command)
         cancel_match = re.match(cancel_pattern, command)
 
@@ -59,55 +57,42 @@ def parse_and_execute_commands(trader, llm_response: str):
                 quantity = float(quantity_str)
                 if action == 'BUY':
                     side = 'buy'
-                    if cur_price >= price:
-                        price *= 0.999 #TODO: make this adjustable through telegram
+                    if cur_price <= price:
+                        price *= buy_slippage_multiplier
                 else:
                     side = 'sell'
-                    if cur_price <= price:
-                        price *= 1.00 #TODO: make this adjustable through telegram
+                    if cur_price >= price:
+                        price *= sell_slippage_multiplier
                 result = trader.place_limit_order_with_leverage(instrument_id, side, quantity, price)
                 results.append(result)
-            except ValueError:
+            except (ValueError, TypeError):
                 results.append(f"❌ Action: UNKNOWN. Invalid number format in command: '{command}'")
-
         elif cancel_match:
             order_id, instrument_id = cancel_match.groups()
             result = trader.cancel_order(instrument_id, order_id)
             results.append(result)
-
         elif command == 'HOLD':
             results.append("✅ Action: HOLD. No trade was executed.")
-
         else:
             results.append(f"❌ Action: UNKNOWN. The command '{command_str}' does not match any known format.")
 
     return "\n".join(results)
 
-# --- USAGE EXAMPLE ---
 if __name__ == "__main__":
-
-    trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
-
-    parse_and_execute_command(trader, """Okay, let's analyze the data and formulate a trading decision.
-
-**Analysis:**
-
-1.  **Overall Trend:** Both the 1m and 5m data suggest a period of consolidation followed by a slight upward trend. The 5m data shows a similar pattern with some volatility.
-2.  **Volume:** Volume has been fluctuating, but relatively high on the 5m timeframe.
-3.  **Price Action:** The price is currently around 111530. The recent price action shows some sideways movement. The 5m data suggests a potential reversal from lower levels.
-4.  **Risk Tolerance:** Given the moderate volatility and the account balance, a conservative approach is warranted. I will target a small buy order to test the waters.
-
-**Decision:**
-
-Based on the analysis, I will place a small buy order.
-
-
-```json
-{
-    "actions": [
-    "BUY[0.00015][BTC-USDT]",
-    "SELL[0.00015][BTC-USDT]",
-    "CANCEL[98765XYZ][BTC-USDT]"
-    ]
-}
-    ```""")
+    trader = OKXTrader(api_key, secret_key, passphrase, is_demo=True)
+    test_response = """
+    This is some text from the LLM.
+    ```json
+    {
+        "reasoning": "The market is showing signs of an uptrend, so I will place a buy order.",
+        "actions": [
+            "BUY[110000.0][0.01][BTC-USDT]",
+            "SELL[120000.0][0.01][BTC-USDT]",
+            "CANCEL[98765XYZ][BTC-USDT]"
+        ]
+    }
+    ```
+    """
+    execution_results = parse_and_execute_commands(trader, test_response)
+    print("\n--- Execution Results ---")
+    print(execution_results)

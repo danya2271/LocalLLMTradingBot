@@ -10,12 +10,13 @@ from OKXinteract import OKXTrader
 from ParseFuncLLM import parse_and_execute_commands
 from Config import *
 from TelegramConfig import *
-from TelegramInteract import send_message_to_all_users, get_trading_coin, poll_telegram_updates
+from TelegramInteract import send_message_to_all_users, get_trading_coin, poll_telegram_updates, get_data_config
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
 bot = OllamaBot()
 
 def HInfoSend(risk,coin):
+    data_config = get_data_config()
     Bal = GetBal(coin)
     open_orders_info = trader.get_open_orders(coin)
     open_positions_info = trader.get_open_positions(coin)
@@ -27,16 +28,8 @@ def HInfoSend(risk,coin):
         print(f"--- {timeframe} Data ---")
         bot.add_to_message(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
-            #TODO make this configurable through Telegram
-            if timeframe == '1m':
-                out = data.tail(80)
-            if timeframe == '5m':
-                out = data.tail(20)
-            if timeframe == '15m':
-                out = data.tail(15)
-            if timeframe == '1H':
-                out = data.tail(18)
-            # Sort by timestamp to ensure the latest data is last
+            rows_to_fetch = data_config.get(timeframe, 15)
+            out = data.tail(rows_to_fetch)
             print(out)
             log_message(out)
             bot.add_to_message(out.to_string())
