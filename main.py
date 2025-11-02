@@ -25,19 +25,19 @@ def HInfoSend(risk,coin):
     open_positions_info = trader.get_open_positions(coin)
     max_order_limits = trader.get_max_order_limits(coin)
     current_price = get_okx_current_price(coin)
-    print(Bal)
+    #print(Bal)
     btc_market_data = get_okx_market_data(coin)
     for timeframe, data in btc_market_data.items():
-        print(f"--- {timeframe} Data ---")
+        #print(f"--- {timeframe} Data ---")
         bot.add_to_message(f"--- {timeframe} Data ---")
         if isinstance(data, pd.DataFrame):
             rows_to_fetch = data_config.get(timeframe, 15)
             out = data.tail(rows_to_fetch)
-            print(out)
+            #print(out)
             log_message(out)
             bot.add_to_message(out.to_string())
         else:
-            print(data)
+            #print(data)
             log_message(data)
             bot.add_to_message(data.to_string())
     bot.add_to_message(f"Current {coin} Price: {current_price}")
