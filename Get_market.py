@@ -27,7 +27,7 @@ def get_okx_market_data(instId='BTC-USDT'):
         dict: A dictionary of pandas DataFrames containing the requested market data.
     """
     print("Fetching candlestick info for", instId)
-    intervals = ['1m', '5m', '1H']
+    intervals = ['1m', '5m', '15m', '1H']
     market_data = {}
 
     for interval in intervals:
