@@ -6,6 +6,7 @@ import json
 LAST_UPDATE_ID_FILE = 'last_update_id.txt'
 SLIPPAGE_CONFIG_FILE = 'slippage_config.json'
 DATA_CONFIG_FILE = 'data_config.json'
+WAIT_CONFIG_FILE = 'wait_config.json'
 
 def get_last_update_id():
     """Reads the last update ID from its file."""
@@ -44,6 +45,23 @@ def send_single_message(bot_token: str, user_id: int, message: str):
         print(f"Successfully sent message to user ID: {user_id}")
     except requests.exceptions.RequestException as e:
         print(f"Failed to send message to user ID: {user_id}. Error: {e}")
+
+# --- Wait Time Configuration ---
+def get_wait_config() -> int:
+    """Reads the default wait time from the config file."""
+    try:
+        with open(WAIT_CONFIG_FILE, 'r') as f:
+            data = json.load(f)
+            return int(data.get('default_wait_seconds', 30))
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        set_wait_config(30) # Create the file with a default
+        return 30
+
+def set_wait_config(seconds: int):
+    """Saves the default wait time to the config file."""
+    with open(WAIT_CONFIG_FILE, 'w') as f:
+        json.dump({'default_wait_seconds': seconds}, f, indent=4)
+    print(f"Default wait time has been updated to: {seconds} seconds")
 
 # --- Slippage Configuration Functions ---
 def get_slippage_config():
@@ -109,7 +127,7 @@ def handle_telegram_command(bot_token: str, message: dict):
             set_trading_coin(new_coin)
             reply_message = f"Trading coin has been set to `{new_coin.upper()}`."
         else:
-            reply_message = "Invalid format. Use `/setcoin COIN-PAIR` (e.g., `/setcoin ETH-USDT`)."
+            reply_message = "Invalid format. Use `/setcoin COIN-PAIR`."
         send_single_message(bot_token, chat_id, reply_message)
 
     elif command == '/getcoin':
@@ -121,23 +139,17 @@ def handle_telegram_command(bot_token: str, message: dict):
         parts = text.split()
         if len(parts) == 3:
             try:
-                buy_slip = float(parts[1])
-                sell_slip = float(parts[2])
-                set_slippage_config(buy_slip, sell_slip)
-                reply_message = (f"✅ Slippage updated.\n"
-                                 f"- Buy orders will be placed `{buy_slip}%` below the target price.\n"
-                                 f"- Sell orders will be placed `{sell_slip}%` above the target price.")
+                set_slippage_config(float(parts[1]), float(parts[2]))
+                reply_message = "✅ Slippage updated."
             except ValueError:
-                reply_message = "Invalid format. Please use numbers for slippage values."
+                reply_message = "Invalid format. Use numbers for slippage."
         else:
-            reply_message = "Invalid format. Use `/setslippage <buy_%> <sell_%>` (e.g., `/setslippage 0.1 0.1`)."
+            reply_message = "Invalid format. Use `/setslippage <buy_%> <sell_%>`."
         send_single_message(bot_token, chat_id, reply_message)
 
     elif command == '/getslippage':
         config = get_slippage_config()
-        reply_message = (f"Current slippage settings:\n"
-                         f"- Buy Price Slippage: `{config['buy_slippage']}%`\n"
-                         f"- Sell Price Slippage: `{config['sell_slippage']}%`")
+        reply_message = f"Current slippage: Buy `{config['buy_slippage']}%`, Sell `{config['sell_slippage']}%`"
         send_single_message(bot_token, chat_id, reply_message)
 
     elif command == '/setdata':
@@ -146,27 +158,48 @@ def handle_telegram_command(bot_token: str, message: dict):
             try:
                 config = {'1m': int(parts[1]), '5m': int(parts[2]), '15m': int(parts[3]), '1H': int(parts[4])}
                 set_data_config(config)
-                reply_message = f"✅ Data fetch rows updated:\n" + "\n".join([f"- {k}: `{v}` rows" for k, v in config.items()])
+                reply_message = "✅ Data fetch rows updated."
             except ValueError:
-                reply_message = "Invalid format. Please use integers for row counts."
+                reply_message = "Invalid format. Use integers for row counts."
         else:
-            reply_message = "Invalid format. Use `/setdata <1m> <5m> <15m> <1H>` (e.g., `/setdata 80 20 15 18`)."
+            reply_message = "Invalid format. Use `/setdata <1m> <5m> <15m> <1H>`."
         send_single_message(bot_token, chat_id, reply_message)
 
     elif command == '/getdata':
         config = get_data_config()
-        reply_message = "Current data fetch settings (rows per timeframe):\n" + "\n".join([f"- {k}: `{v}`" for k, v in config.items()])
+        reply_message = "Current data fetch settings:\n" + "\n".join([f"- {k}: `{v}`" for k, v in config.items()])
+        send_single_message(bot_token, chat_id, reply_message)
+
+    # New commands for wait time
+    elif command == '/setwait':
+        parts = text.split()
+        if len(parts) == 2:
+            try:
+                seconds = int(parts[1])
+                set_wait_config(seconds)
+                reply_message = f"✅ Default wait time set to `{seconds}` seconds."
+            except ValueError:
+                reply_message = "Invalid format. Please use an integer for seconds."
+        else:
+            reply_message = "Invalid format. Use `/setwait <seconds>`."
+        send_single_message(bot_token, chat_id, reply_message)
+
+    elif command == '/getwait':
+        seconds = get_wait_config()
+        reply_message = f"The default wait time between loops is `{seconds}` seconds."
         send_single_message(bot_token, chat_id, reply_message)
 
     elif command == '/help':
         reply_message = (
             "Available commands:\n"
-            "`/setcoin COIN-PAIR` - Set the coin to trade.\n"
-            "`/getcoin` - See the currently traded coin.\n"
-            "`/setslippage <buy_%> <sell_%>` - Set price slippage for orders.\n"
-            "`/getslippage` - View current slippage settings.\n"
-            "`/setdata <1m> <5m> <15m> <1H>` - Set rows to fetch for market data.\n"
-            "`/getdata` - View current data fetch settings."
+            "`/setcoin COIN-PAIR`\n"
+            "`/getcoin`\n"
+            "`/setslippage <buy_%> <sell_%>`\n"
+            "`/getslippage`\n"
+            "`/setdata <1m> <5m> <15m> <1H>`\n"
+            "`/getdata`\n"
+            "`/setwait <seconds>`\n"
+            "`/getwait`"
         )
         send_single_message(bot_token, chat_id, reply_message)
 
@@ -177,7 +210,6 @@ def handle_telegram_command(bot_token: str, message: dict):
 def poll_telegram_updates(bot_token: str):
     """
     Continuously polls Telegram for new messages and handles them.
-    This function is designed to be run in a separate thread.
     """
     print("Telegram message listener started...")
     last_update_id = get_last_update_id()

@@ -10,7 +10,10 @@ from OKXinteract import OKXTrader
 from ParseFuncLLM import parse_and_execute_commands
 from Config import *
 from TelegramConfig import *
-from TelegramInteract import send_message_to_all_users, get_trading_coin, poll_telegram_updates, get_data_config
+from TelegramInteract import (
+    send_message_to_all_users, get_trading_coin, poll_telegram_updates,
+    get_data_config, get_wait_config
+)
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
 bot = OllamaBot()
@@ -38,33 +41,33 @@ def HInfoSend(risk,coin):
             log_message(data)
             bot.add_to_message(data.to_string())
     bot.add_to_message(f"Current {coin} Price: {current_price}")
-    bot.add_to_message(f"""
+    prompt = f"""
 ### ROLE & OBJECTIVE ###
-You are a hyper-specialized autonomous trading analyst AI. Your sole function is to analyze market data and generate a precise JSON output to execute trades for the {coin} pair. Your primary directive is to maximize the account's USDT balance through strategic, risk-managed trades.
+You are a hyper-specialized autonomous trading analyst AI. Your sole function is to analyze market data and generate a precise JSON output to execute trades and control your own operational tempo for the {coin} pair. Your primary directive is to maximize the account's USDT balance.
 
-### DATA INPUTS (You will receive this) ###
-1.  **Current Account State**: Available USDT balance, current {coin} holdings, max buy/sell limits.
-2.  **Market Data**: Recent candlestick data (close price, volume) for various timeframes.
+### DATA INPUTS ###
+1.  **Current Account State**: Available USDT balance, {coin} holdings, max buy/sell limits.
+2.  **Market Data**: Recent candlestick data for various timeframes.
 
 ### CRITICAL RULES & CONSTRAINTS ###
-1.  **Strict Trade Sizing**:
-    *   `BUY` orders must use a total quantity between 30% and 90% of the `max_buy_limit`.
-    *   `SELL` orders must use a total quantity between 30% and 90% of the `max_sell_limit`.
-2.  **Mandatory Reasoning**: You MUST provide a concise, step-by-step rationale for your decision within the JSON structure.
-3.  **Action Specificity**: Replace all placeholders like `[PRICE]` and `[QUANTITY]` with precise, calculated numerical values. `[PRICE]` should be based on current market conditions.
-4.  **No External Information**: Base your decisions ONLY on the data provided. Do not use any external knowledge or news.
-5.  **Risk management**: Close BUY/SELL positions ONLY if PNL is POSITIVE
+1.  **Strict Trade Sizing**: `BUY` and `SELL` orders must use a quantity between 30% and 90% of the `max_buy_limit` or `max_sell_limit`.
+2.  **Mandatory Reasoning**: You MUST provide a concise, step-by-step rationale for your decision.
+3.  **Action Specificity**: Replace `[PRICE]` and `[QUANTITY]` with precise numerical values.
+4.  **No External Information**: Base decisions ONLY on the data provided.
+5.  **Risk management**: Close BUY/SELL positions ONLY if PNL is POSITIVE.
+
 ### RESPONSE FORMAT (Strictly Enforced) ###
-Your **entire** output MUST be a single, raw JSON object. Do not add explanations, comments, or markdown formatting (like ```json) before or after the JSON.
+Your **entire** output MUST be a single, raw JSON object.
 
 The JSON object must contain two keys:
-1.  `reasoning` (string): A brief, step-by-step analysis explaining the 'why' behind the chosen actions.
-2.  `actions` (list of strings): A list of command strings to be executed.
+1.  `reasoning` (string): A brief analysis explaining your actions.
+2.  `actions` (list of strings): A list of commands to be executed.
 
 Each string in the `actions` list must strictly conform to one of the following formats:
 *   `BUY[PRICE][QUANTITY][{coin}]`
 *   `SELL[PRICE][QUANTITY][{coin}]`
 *   `CANCEL[ORDER_ID][{coin}]`
+*   `WAIT[SECONDS]` - Pause the bot for a specific number of seconds before the next cycle.
 *   `HOLD`
 
 ---
@@ -73,13 +76,15 @@ This is an example of a perfect response.
 
 ```json
 {{
-  "reasoning": "Analysis: The 1m and 5m charts show a bullish crossover, with increasing volume on the last three candles. Price has broken above the recent resistance level. Decision: I will place a BUY order for 50% of the max buy limit to capitalize on the upward momentum while managing risk.",
+  "reasoning": "Analysis: The 1m chart shows high volatility. I will place a buy order slightly below the current price to catch a potential dip and will then wait for 90 seconds to let the market stabilize before re-evaluating.",
   "actions": [
-    "BUY[{current_price}][0.5][{coin}]"
+    "BUY[{float(current_price) * 0.999:.2f}][0.5][{coin}]",
+    "WAIT[90]"
   ]
 }}
 ```
-""")
+"""
+    bot.add_to_message(prompt)
     bot.add_to_message(Bal)
     bot.add_to_message(open_orders_info)
     bot.add_to_message(max_order_limits)
@@ -87,24 +92,31 @@ This is an example of a perfect response.
     llm_answ = bot.send_and_reset_message()
     print(llm_answ)
     send_message_to_all_users(TELEGRAM_BOT_TOKEN, TELEGRAM_USER_IDS, llm_answ)
-    parse_and_execute_commands(trader, llm_answ)
+    execution_results, llm_wait_time = parse_and_execute_commands(trader, llm_answ)
+    print(execution_results)
+    send_message_to_all_users(TELEGRAM_BOT_TOKEN, TELEGRAM_USER_IDS, f"--- Execution Results ---\n{execution_results}")
+
+    return llm_wait_time
 
 if __name__ == '__main__':
     # Start the Telegram listener in a background thread
     telegram_thread = threading.Thread(target=poll_telegram_updates, args=(TELEGRAM_BOT_TOKEN,), daemon=True)
     telegram_thread.start()
 
-    interval_seconds = 30
-
     try:
         print("Starting the main trading loop. Press Ctrl+C to stop.")
         while True:
-            # Get the current coin to trade from the config file
             current_coin = get_trading_coin()
             print(f"\n--- Running analysis for {current_coin} ---")
 
-            # Run the main trading logic
-            HInfoSend(0, current_coin)
+            llm_specified_wait_time = HInfoSend(0, current_coin)
+
+            if llm_specified_wait_time is not None:
+                interval_seconds = llm_specified_wait_time
+                print(f"LLM decided to wait for {interval_seconds} seconds.")
+            else:
+                interval_seconds = get_wait_config() # Fallback to default
+                print(f"LLM did not specify wait time. Using default: {interval_seconds} seconds.")
 
             print(f"--- Waiting for {interval_seconds / 60:.1f} minutes before next run... ---")
             time.sleep(interval_seconds)

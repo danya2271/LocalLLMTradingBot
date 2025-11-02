@@ -7,13 +7,16 @@ from TelegramInteract import get_slippage_config
 
 def parse_and_execute_commands(trader, llm_response: str):
     """
-    Parses a complex LLM response to find and execute one or more trading commands.
-    It looks for a JSON block containing an "actions" list (for multiple commands)
-    or an "action" string (for a single command).
+    Parses a complex LLM response to find and execute trading commands.
+
+    Returns:
+        tuple[str, int | None]: A tuple containing the string of execution results
+                                and an integer for the wait time in seconds, or None.
     """
     print(f"\n--- Processing LLM Response ---")
     results = []
     commands_to_parse = []
+    wait_seconds = None # Initialize wait time as None
     cleaned_text = llm_response.strip()
 
     try:
@@ -27,16 +30,16 @@ def parse_and_execute_commands(trader, llm_response: str):
             elif 'action' in data:
                 commands_to_parse.append(data['action'])
             else:
-                return "❌ Action: UNKNOWN. Found JSON but it is missing the 'actions' or 'action' key."
+                return "❌ Action: UNKNOWN. JSON is missing 'actions' or 'action' key.", None
         else:
-            return "❌ Action: UNKNOWN. No valid JSON block found in the response."
+            return "❌ Action: UNKNOWN. No valid JSON block found.", None
     except json.JSONDecodeError:
-        return "❌ Action: UNKNOWN. Malformed JSON detected in the response."
+        return "❌ Action: UNKNOWN. Malformed JSON detected.", None
 
     print(f"Found commands to parse: {commands_to_parse}")
 
     if not commands_to_parse:
-        return "❌ Action: UNKNOWN. The JSON did not contain any commands to execute."
+        return "❌ Action: UNKNOWN. No commands found in JSON.", None
 
     slippage_config = get_slippage_config()
     buy_slippage_multiplier = 1 - (slippage_config.get('buy_slippage', 0.1) / 100.0)
@@ -46,8 +49,11 @@ def parse_and_execute_commands(trader, llm_response: str):
         command = command_str.strip().upper()
         trade_pattern = r'^(BUY|SELL)\[([\d.]+)\]\[([\d.]+)\]\[([A-Z-]+)\]$'
         cancel_pattern = r'^CANCEL\[(\w+)\]\[([A-Z-]+)\]$'
+        wait_pattern = r'^WAIT\[(\d+)\]$'
+
         trade_match = re.match(trade_pattern, command)
         cancel_match = re.match(cancel_pattern, command)
+        wait_match = re.match(wait_pattern, command)
 
         if trade_match:
             action, price_str, quantity_str, instrument_id = trade_match.groups()
@@ -57,42 +63,47 @@ def parse_and_execute_commands(trader, llm_response: str):
                 quantity = float(quantity_str)
                 if action == 'BUY':
                     side = 'buy'
-                    if cur_price <= price:
-                        price *= buy_slippage_multiplier
+                    if cur_price <= price: price *= buy_slippage_multiplier
                 else:
                     side = 'sell'
-                    if cur_price >= price:
-                        price *= sell_slippage_multiplier
+                    if cur_price >= price: price *= sell_slippage_multiplier
                 result = trader.place_limit_order_with_leverage(instrument_id, side, quantity, price)
                 results.append(result)
             except (ValueError, TypeError):
-                results.append(f"❌ Action: UNKNOWN. Invalid number format in command: '{command}'")
+                results.append(f"❌ Action: UNKNOWN. Invalid number in command: '{command}'")
+
         elif cancel_match:
             order_id, instrument_id = cancel_match.groups()
             result = trader.cancel_order(instrument_id, order_id)
             results.append(result)
+
+        elif wait_match:
+            time_to_wait = int(wait_match.groups()[0])
+            wait_seconds = time_to_wait
+            results.append(f"✅ Action: WAIT. Will pause for {time_to_wait} seconds after this cycle.")
+
         elif command == 'HOLD':
             results.append("✅ Action: HOLD. No trade was executed.")
         else:
-            results.append(f"❌ Action: UNKNOWN. The command '{command_str}' does not match any known format.")
+            results.append(f"❌ Action: UNKNOWN. Command '{command_str}' has an invalid format.")
 
-    return "\n".join(results)
+    return "\n".join(results), wait_seconds
 
 if __name__ == "__main__":
     trader = OKXTrader(api_key, secret_key, passphrase, is_demo=True)
     test_response = """
-    This is some text from the LLM.
     ```json
     {
-        "reasoning": "The market is showing signs of an uptrend, so I will place a buy order.",
+        "reasoning": "Market is volatile, will place orders and wait longer.",
         "actions": [
             "BUY[110000.0][0.01][BTC-USDT]",
-            "SELL[120000.0][0.01][BTC-USDT]",
-            "CANCEL[98765XYZ][BTC-USDT]"
+            "WAIT"
         ]
     }
     ```
     """
-    execution_results = parse_and_execute_commands(trader, test_response)
+    execution_results, llm_wait_time = parse_and_execute_commands(trader, test_response)
     print("\n--- Execution Results ---")
     print(execution_results)
+    print(f"\n--- Recommended Wait Time ---")
+    print(f"{llm_wait_time} seconds")
