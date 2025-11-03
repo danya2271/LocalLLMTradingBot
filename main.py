@@ -90,7 +90,7 @@ This is an example of a perfect response.
 ```
 """
     bot.add_to_message(prompt)
-    bot.add_to_message(Bal)
+    #bot.add_to_message(Bal)
     bot.add_to_message(open_orders_info)
     bot.add_to_message(max_order_limits)
     bot.add_to_message(open_positions_info)
