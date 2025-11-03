@@ -19,7 +19,6 @@ class OKXTrader:
 
         print(f"Trader initialized in {'DEMO' if is_demo else 'LIVE'} mode.")
 
-    # ... (all other methods like get_max_order_limits, place_limit_order_with_leverage, etc., remain unchanged) ...
     def get_max_order_limits(self, instrument_id):
         print(f"\n-> Requesting max order limits for {instrument_id}...")
         try:
@@ -33,6 +32,18 @@ class OKXTrader:
                 return f"❌ Error getting limits: {result.get('msg')}"
         except Exception as e:
             return f"❌ A critical error occurred during the API call: {e}"
+
+    def get_max_order_limits_quantity(self, instrument_id):
+        try:
+            result = self.account_api.get_max_order_size(instId=instrument_id, tdMode='cross', ccy='USDT')
+            if result.get('code') == '0':
+                data = result['data'][0]
+                max_buy, max_sell = data.get('maxBuy'), data.get('maxSell')
+                return max_buy, max_sell
+            else:
+                return 0, 0
+        except Exception as e:
+            return 0, 0
 
     def place_limit_order_with_leverage(self, instrument_id, side, size, price):
         print(f"\n-> Placing {side.upper()} limit order: {size} {instrument_id} at price {price}...")
