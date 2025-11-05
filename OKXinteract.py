@@ -132,11 +132,16 @@ class OKXTrader:
                         elif pos_side_from_api in ['long', 'short']:
                             display_side = pos_side_from_api.upper()
 
+                        if display_side == 'SHORT (from net)':
+                            total_size = float(pos.get('pos')) / float(pos.get('avgPx'))
+                        else:
+                            total_size = pos.get('pos')
+
                         output_lines.append(
                             f"  - Instrument: {pos.get('instId')}, "
                             f"Mode: {mgn_mode}, "
                             f"Side: {display_side}, "
-                            f"Size: {pos.get('pos')}, "
+                            f"Size: {total_size} SOL, "
                             f"Avg Price: {pos.get('avgPx')}, "
                             f"Unrealized P/L: {pos.get('upl')}"
                         )
