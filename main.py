@@ -83,7 +83,7 @@ This is an example of a perfect response.
 {{
   "reasoning": "Analysis: The 1m chart shows high volatility. I will place a buy order slightly below the current price to catch a potential dip and will then wait for 90 seconds to let the market stabilize before re-evaluating.",
   "actions": [
-    "BUY[175.50][0.5][SOL]",
+    "BUY[{float(current_price) * 0.999:.2f}][0.5][{coin}]",
     "WAIT[90]"
   ]
 }}
