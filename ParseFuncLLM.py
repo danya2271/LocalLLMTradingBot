@@ -57,20 +57,22 @@ def parse_and_execute_commands(trader, llm_response: str):
 
         if trade_match:
             action, price_str, quantity_str, instrument_id = trade_match.groups()
-            try:
-                cur_price = float(get_okx_current_price(instrument_id))
-                price = float(price_str)
-                quantity = float(quantity_str)
-                if action == 'BUY':
-                    side = 'buy'
-                    if cur_price <= price: price *= buy_slippage_multiplier
-                else:
-                    side = 'sell'
-                    if cur_price >= price: price *= sell_slippage_multiplier
-                result = trader.place_limit_order_with_leverage(instrument_id, side, quantity, price)
-                results.append(result)
-            except (ValueError, TypeError):
-                results.append(f"❌ Action: UNKNOWN. Invalid number in command: '{command}'")
+            max_quantity, min_quantity = trader.get_max_order_limits_quantity(instrument_id)
+            max_quantity = float(max_quantity)
+            min_quantity = float(min_quantity)
+            cur_price = float(get_okx_current_price(instrument_id))
+            price = float(price_str)
+            quantity = float(quantity_str)
+            if action == 'BUY':
+                side = 'buy'
+                if cur_price <= price: price = cur_price * buy_slippage_multiplier
+                if quantity >= max_quantity: quantity = max_quantity * 0.9
+            else:
+                side = 'sell'
+                if cur_price >= price: price = cur_price * sell_slippage_multiplier
+                if quantity >= min_quantity: quantity = min_quantity * 0.9
+            result = trader.place_limit_order_with_leverage(instrument_id, side, quantity, price)
+            results.append(result)
 
         elif cancel_match:
             order_id, instrument_id = cancel_match.groups()
@@ -90,14 +92,14 @@ def parse_and_execute_commands(trader, llm_response: str):
     return "\n".join(results), wait_seconds
 
 if __name__ == "__main__":
-    trader = OKXTrader(api_key, secret_key, passphrase, is_demo=True)
+    trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
     test_response = """
     ```json
     {
         "reasoning": "Market is volatile, will place orders and wait longer.",
         "actions": [
-            "BUY[110000.0][0.01][BTC-USDT]",
-            "WAIT"
+            "BUY[168.06][0.1305][SOL-USDT]",
+            "WAIT[900]"
         ]
     }
     ```
