@@ -4,6 +4,7 @@ import okx.PublicData as Public
 from decimal import Decimal, ROUND_DOWN
 import time
 import re
+import uuid
 from Config import *
 
 class OKXTrader:
@@ -55,6 +56,64 @@ class OKXTrader:
                 return f"❌ Error placing order: {result.get('msg')}"
         except Exception as e:
             return f"❌ A critical error occurred during the API call: {e}"
+
+
+
+    def place_limit_order_with_tp_sl(self, instrument_id, side, size, price, take_profit_price, stop_loss_price):
+        print(f"\n-> Placing {side.upper()} limit order with ATTACHED TP/SL for {instrument_id}...")
+        print(f"   Main Order: {size} at {price}")
+        print(f"   Take Profit will be attached at: {take_profit_price}")
+        print(f"   Stop Loss will be attached at: {stop_loss_price}")
+
+        main_order_params = {
+            'instId': instrument_id,
+            'tdMode': 'cross',
+            'side': side,
+            'ordType': 'limit',
+            'sz': str(size),
+            'px': str(price),
+            'ccy': 'USDT'
+        }
+
+        closing_side = 'sell' if side == 'buy' else 'buy'
+        pos_side = 'long' if side == 'buy' else 'short'
+
+        attached_oco_params = {
+            "algoClOrdId": f"oco-{instrument_id}-{int(time.time() * 1000)}",
+            "ordType": "oco",
+            "sz": str(size),
+            "side": closing_side,
+            "posSide": pos_side,
+            "tpTriggerPx": str(take_profit_price),
+            "tpOrdPx": str(take_profit_price),
+            "slTriggerPx": str(stop_loss_price),
+            "slOrdPx": str(stop_loss_price),
+        }
+
+        main_order_params['attachAlgoOrds'] = [attached_oco_params]
+
+        try:
+            result = self.trade_api._request_with_params('POST', '/api/v5/trade/order', main_order_params)
+
+            if str(result.get('code')) == '0':
+                order_id = result['data'][0].get('ordId')
+                return f"✅ Limit order with attached TP/SL placed successfully! Main Order ID: {order_id}"
+            else:
+                error_msg = result.get('msg', '')
+                try:
+                    detailed_msg = result['data'][0].get('sMsg', '')
+                    if detailed_msg:
+                        error_msg = detailed_msg
+                except (IndexError, KeyError, TypeError):
+                    pass
+
+                error_code = result.get('code', 'N/A')
+                return f"❌ Error placing order: {error_msg} (Code: {error_code})"
+        except Exception as e:
+            return f"❌ A critical error occurred during the API call: {e}"
+
+
+
 
     def cancel_order(self, instrument_id, order_id):
         print(f"\n-> Canceling order ID: {order_id} for {instrument_id}...")
@@ -157,40 +216,27 @@ class OKXTrader:
 # --- USAGE EXAMPLE ---
 if __name__ == "__main__":
     trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
-    instrument = 'BTC-USDT'
+    instrument_sol = 'SOL-USDT'
 
-    limits_info_string = trader.get_max_order_limits(instrument)
-    print(limits_info_string)
+    entry_price = 157.0
+    trade_size = 0.08
+    tp_price = round(entry_price * 1.030, 2)
+    sl_price = round(entry_price * 0.99, 2)
 
-    test_price = 10000
-    test_size = 0.0001
-
-    place_order_result_string = trader.place_limit_order_with_leverage(
-        instrument, 'buy', test_size, test_price
+    place_order_result_string = trader.place_limit_order_with_tp_sl(
+        instrument_id=instrument_sol,
+        side='buy',
+        size=trade_size,
+        price=entry_price,
+        take_profit_price=tp_price,
+        stop_loss_price=sl_price
     )
     print(place_order_result_string)
+
     if "successfully" in place_order_result_string:
         match = re.search(r'Order ID: (\d+)', place_order_result_string)
         if match:
             order_id_to_cancel = match.group(1)
             print(f"\nExtracted Order ID to cancel: {order_id_to_cancel}")
-
-            print("\n--- Waiting 2 seconds for the order to appear in the system ---")
             time.sleep(2)
-
-            open_orders_string = trader.get_open_orders(instrument)
-            print(open_orders_string)
-
-            cancel_result_string = trader.cancel_order(instrument, order_id_to_cancel)
-            print(cancel_result_string)
-
-            print("\n--- Waiting 2 seconds for the cancellation to process ---")
-            time.sleep(2)
-
-            final_orders_string = trader.get_open_orders(instrument)
-            print(final_orders_string)
-
-        else:
-            print("\nCould not find Order ID in the response message.")
-    else:
-        print("\nOrder placement failed, skipping cancellation test.")
+            print(trader.cancel_order(instrument_sol, order_id_to_cancel))
