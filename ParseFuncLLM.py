@@ -47,13 +47,39 @@ def parse_and_execute_commands(trader, llm_response: str):
 
     for command_str in commands_to_parse:
         command = command_str.strip().upper()
+        open_pos_pattern = r'^(LONG_TP_SL|SHORT_TP_SL)\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]\[([A-Z-]+)\]$'
         trade_pattern = r'^(BUY|SELL)\[([\d.]+)\]\[([\d.]+)\]\[([A-Z-]+)\]$'
         cancel_pattern = r'^CANCEL\[(\w+)\]\[([A-Z-]+)\]$'
         wait_pattern = r'^WAIT\[(\d+)\]$'
 
+        open_pos_match = re.match(open_pos_pattern, command)
         trade_match = re.match(trade_pattern, command)
         cancel_match = re.match(cancel_pattern, command)
         wait_match = re.match(wait_pattern, command)
+
+        if open_pos_match:
+            action, price_str, tp_price_str, sl_price_str, quantity_str, instrument_id = open_pos_match.groups()
+            #max_quantity, min_quantity = trader.get_max_order_limits_quantity(instrument_id)
+            #max_quantity = float(max_quantity)
+            #min_quantity = float(min_quantity)
+            tp_price = float(tp_price_str)
+            sl_price = float(sl_price_str)
+            cur_price = float(get_okx_current_price(instrument_id))
+            price = float(price_str)
+            quantity = float(quantity_str)
+            if action == 'LONG_TP_SL':
+                side = 'buy'
+            else:
+                side = 'sell'
+            result = trader.place_limit_order_with_tp_sl(
+                instrument_id=instrument_id,
+                side=side,
+                size=quantity,
+                price=price,
+                take_profit_price=tp_price,
+                stop_loss_price=sl_price
+            )
+            results.append(result)
 
         if trade_match:
             action, price_str, quantity_str, instrument_id = trade_match.groups()

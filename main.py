@@ -69,6 +69,8 @@ The JSON object must contain two keys:
 2.  `actions` (list of strings): A list of commands to be executed.
 
 Each string in the `actions` list must strictly conform to one of the following formats:
+*   `LONG_TP_SL[PRICE][TP_PRICE][SL_PRICE][QUANTITY][{coin}]`
+*   `SHORT_TP_SL[PRICE][TP_PRICE][SL_PRICE][QUANTITY][{coin}]`
 *   `BUY[PRICE][QUANTITY][{coin}]`
 *   `SELL[PRICE][QUANTITY][{coin}]`
 *   `CANCEL[ORDER_ID][{coin}]`
