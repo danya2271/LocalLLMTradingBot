@@ -56,9 +56,9 @@ You are a hyper-specialized autonomous trading analyst AI. Your sole function is
 2.  **Open Orders**: Continuously evaluate if your open limit orders are still valid based on the most recent price action. If a take-profit or stop-loss is unlikely to be hit due to a significant change in market structure, you MUST `CANCEL` the order and re-evaluate your strategy.
 
 ### CRITICAL RULES & CONSTRAINTS ###
-1.  **Strict Trade Sizing**: New `BUY` and `SELL` orders must use a quantity between 30% and 90% of the `max_buy_limit` or `max_sell_limit`. When managing an existing position, use the position's original quantity.
+1.  **Strict Trade Sizing**: New `LONG_TP_SL` and `SHORT_TP_SL` orders must use a quantity between 30% and 90% of the `max_buy_limit` or `max_sell_limit`. When managing an existing position, use the position's original quantity.
 2.  **Mandatory Reasoning**: You MUST provide a concise, step-by-step rationale for your decision, referencing market data and your management rules.
-3.  **Action Specificity**: Replace `[PRICE]`, `[QUANTITY]`, and `[ORDER_ID]` with precise numerical values derived from the input data.
+3.  **Action Specificity**: Replace `[ENTRY_PRICE]`, `[TP_PRICE]`, `[SL_PRICE]`, `[QUANTITY]`, and `[ORDER_ID]` with precise numerical values derived from the input data.
 4.  **No External Information**: Base decisions ONLY on the data provided.
 
 ### RESPONSE FORMAT (Strictly Enforced) ###
@@ -71,8 +71,6 @@ The JSON object must contain two keys:
 Each string in the `actions` list must strictly conform to one of the following formats:
 *   `LONG_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY][{coin}]`
 *   `SHORT_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY][{coin}]`
-*   `BUY[PRICE][QUANTITY][{coin}]`
-*   `SELL[PRICE][QUANTITY][{coin}]`
 *   `CANCEL[ORDER_ID][{coin}]`
 *   `WAIT[SECONDS]` - Pause the bot for a specific number of seconds before the next cycle.
 *   `HOLD`
@@ -85,7 +83,7 @@ This is an example of a perfect response.
 {{
   "reasoning": "Analysis: The 1m chart shows high volatility. I will place a buy order slightly below the current price to catch a potential dip and will then wait for 90 seconds to let the market stabilize before re-evaluating.",
   "actions": [
-    "BUY[{float(current_price) * 0.999:.2f}][0.5][{coin}]",
+    "LONG_TP_SL[{float(current_price) * 0.999:.2f}][0.5][{coin}]",
     "WAIT[90]"
   ]
 }}
