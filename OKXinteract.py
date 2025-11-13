@@ -213,13 +213,71 @@ class OKXTrader:
 
         return "\n".join(output_lines)
 
+    def close_all_orders_and_positions(self):
+        """
+        Closes all open orders, close all open positions using the dedicated endpoint.
+        """
+        print(f"\n🚨 Initiating full closure of all open orders and positions...")
+
+        # Cancel all open orders
+        print("\n-> Step 1: Canceling all open orders...")
+        try:
+            open_orders_result = self.trade_api.get_order_list()
+            if open_orders_result.get('code') == '0':
+                orders_to_cancel = open_orders_result.get('data', [])
+                if not orders_to_cancel:
+                    print("✅ No open orders to cancel.")
+                else:
+                    for order in orders_to_cancel:
+                        print(f"   - Canceling order {order['ordId']} for {order['instId']}...")
+                        self.trade_api.cancel_order(instId=order['instId'], ordId=order['ordId'])
+            else:
+                print(f"❌ Error fetching open orders: {open_orders_result.get('msg')}")
+        except Exception as e:
+            print(f"❌ A critical error occurred during order cancellation: {e}")
+
+        # Close all open positions using the dedicated endpoint
+        print("\n-> Step 2: Closing all open positions...")
+        try:
+            positions_result = self.account_api.get_positions()
+            if positions_result.get('code') == '0':
+                active_positions = [p for p in positions_result.get('data', []) if p.get('pos') and float(p.get('pos')) != 0]
+                if not active_positions:
+                    print("✅ No open positions to close.")
+                else:
+                    for pos in active_positions:
+                        instId = pos['instId']
+                        mgnMode = pos['mgnMode']
+                        posSide = pos.get('posSide')
+
+                        print(f"   - Sending request to close entire position for {instId} (Mode: {mgnMode})...")
+
+                        params = {
+                            'instId': instId,
+                            'mgnMode': mgnMode,
+                            'posSide': posSide,
+                            'ccy': 'USDT'
+                        }
+
+                        close_result = self.trade_api._request_with_params('POST', '/api/v5/trade/close-position', params)
+
+                        if close_result.get('code') == '0':
+                            print(f"   ✅ Close position request for {instId} sent successfully.")
+                        else:
+                            print(f"   ❌ Failed to send close position request for {instId}: {close_result.get('msg')}")
+            else:
+                print(f"❌ Error fetching open positions: {positions_result.get('msg')}")
+        except Exception as e:
+            print(f"❌ A critical error occurred during position closing: {e}")
+
+
 # --- USAGE EXAMPLE ---
 if __name__ == "__main__":
     trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
     instrument_sol = 'SOL-USDT'
 
-    entry_price = 157.0
-    trade_size = 0.08
+    entry_price = 143.0
+    trade_size = 0.06
     tp_price = round(entry_price * 1.030, 2)
     sl_price = round(entry_price * 0.99, 2)
 
@@ -232,6 +290,8 @@ if __name__ == "__main__":
         stop_loss_price=sl_price
     )
     print(place_order_result_string)
+
+    trader.close_all_orders_and_positions()
 
     if "successfully" in place_order_result_string:
         match = re.search(r'Order ID: (\d+)', place_order_result_string)
