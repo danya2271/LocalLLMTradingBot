@@ -69,9 +69,9 @@ The JSON object must contain two keys:
 2.  `actions` (list of strings): A list of commands to be executed.
 
 Each string in the `actions` list must strictly conform to one of the following formats:
-*   `LONG_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY][{coin}]`
-*   `SHORT_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY][{coin}]`
-*   `CANCEL[ORDER_ID][{coin}]`
+*   `LONG_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY]`
+*   `SHORT_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY]`
+*   `CANCEL[ORDER_ID]`
 *   `WAIT[SECONDS]` - Pause the bot for a specific number of seconds before the next cycle.
 *   `HOLD`
 
@@ -83,7 +83,7 @@ This is an example of a perfect response.
 {{
   "reasoning": "Analysis: The 1m chart shows high volatility. I will place a buy order slightly below the current price to catch a potential dip and will then wait for 90 seconds to let the market stabilize before re-evaluating.",
   "actions": [
-    "LONG_TP_SL[{float(current_price) * 0.999:.2f}][0.5][{coin}]",
+    "LONG_TP_SL[{float(current_price) * 0.999:.2f}][0.5]",
     "WAIT[90]"
   ]
 }}
@@ -97,7 +97,7 @@ This is an example of a perfect response.
     llm_answ = bot.send_and_reset_message()
     print(llm_answ)
     send_message_to_all_users(TELEGRAM_BOT_TOKEN, TELEGRAM_USER_IDS, llm_answ)
-    execution_results, llm_wait_time = parse_and_execute_commands(trader, llm_answ)
+    execution_results, llm_wait_time = parse_and_execute_commands(trader, coin, llm_answ)
     print(execution_results)
     send_message_to_all_users(TELEGRAM_BOT_TOKEN, TELEGRAM_USER_IDS, f"--- Execution Results ---\n{execution_results}")
 

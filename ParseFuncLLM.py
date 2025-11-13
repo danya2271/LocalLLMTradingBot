@@ -5,7 +5,7 @@ from Get_market import get_okx_current_price
 from Config import *
 from TelegramInteract import get_slippage_config
 
-def parse_and_execute_commands(trader, llm_response: str):
+def parse_and_execute_commands(trader, instrument_id, llm_response: str):
     """
     Parses a complex LLM response to find and execute trading commands.
 
@@ -47,9 +47,9 @@ def parse_and_execute_commands(trader, llm_response: str):
 
     for command_str in commands_to_parse:
         command = command_str.strip().upper()
-        open_pos_pattern = r'^(LONG_TP_SL|SHORT_TP_SL)\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]\[([A-Z-]+)\]$'
-        trade_pattern = r'^(BUY|SELL)\[([\d.]+)\]\[([\d.]+)\]\[([A-Z-]+)\]$'
-        cancel_pattern = r'^CANCEL\[(\w+)\]\[([A-Z-]+)\]$'
+        open_pos_pattern = r'^(LONG_TP_SL|SHORT_TP_SL)\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]$'
+        trade_pattern = r'^(BUY|SELL)\[([\d.]+)\]\[([\d.]+)\]$'
+        cancel_pattern = r'^CANCEL\[(\w+)\]$'
         wait_pattern = r'^WAIT\[(\d+)\]$'
 
         open_pos_match = re.match(open_pos_pattern, command)
@@ -58,7 +58,7 @@ def parse_and_execute_commands(trader, llm_response: str):
         wait_match = re.match(wait_pattern, command)
 
         if open_pos_match:
-            action, price_str, tp_price_str, sl_price_str, quantity_str, instrument_id = open_pos_match.groups()
+            action, price_str, tp_price_str, sl_price_str, quantity_str = open_pos_match.groups()
             #max_quantity, min_quantity = trader.get_max_order_limits_quantity(instrument_id)
             #max_quantity = float(max_quantity)
             #min_quantity = float(min_quantity)
@@ -82,7 +82,7 @@ def parse_and_execute_commands(trader, llm_response: str):
             results.append(result)
 
         if trade_match:
-            action, price_str, quantity_str, instrument_id = trade_match.groups()
+            action, price_str, quantity_str = trade_match.groups()
             max_quantity, min_quantity = trader.get_max_order_limits_quantity(instrument_id)
             max_quantity = float(max_quantity)
             min_quantity = float(min_quantity)
@@ -101,7 +101,7 @@ def parse_and_execute_commands(trader, llm_response: str):
             results.append(result)
 
         elif cancel_match:
-            order_id, instrument_id = cancel_match.groups()
+            order_id = cancel_match.groups()
             result = trader.cancel_order(instrument_id, order_id)
             results.append(result)
 
