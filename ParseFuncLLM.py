@@ -51,6 +51,7 @@ def parse_and_execute_commands(trader, instrument_id, llm_response: str):
         trade_pattern = r'^(BUY|SELL)\[([\d.]+)\]\[([\d.]+)\]$'
         cancel_pattern = r'^CANCEL\[(\w+)\]$'
         wait_pattern = r'^WAIT\[(\d+)\]$'
+        close_all_pattern = r'^CLOSE_ALL$'
 
         open_pos_match = re.match(open_pos_pattern, command)
         trade_match = re.match(trade_pattern, command)
@@ -110,8 +111,13 @@ def parse_and_execute_commands(trader, instrument_id, llm_response: str):
             wait_seconds = time_to_wait
             results.append(f"✅ Action: WAIT. Will pause for {time_to_wait} seconds after this cycle.")
 
+        elif close_all_pattern:
+            result = trader.close_all_orders_and_positions()
+            results.append(result)
+
         elif command == 'HOLD':
             results.append("✅ Action: HOLD. No trade was executed.")
+
         else:
             results.append(f"❌ Action: UNKNOWN. Command '{command_str}' has an invalid format.")
 

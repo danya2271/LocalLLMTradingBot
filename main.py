@@ -72,6 +72,7 @@ Each string in the `actions` list must strictly conform to one of the following 
 *   `LONG_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY]`
 *   `SHORT_TP_SL[ENTRY_PRICE][TP_PRICE][SL_PRICE][QUANTITY]`
 *   `CANCEL[ORDER_ID]`
+*   `CLOSE_ALL` - closes all orders and positions
 *   `WAIT[SECONDS]` - Pause the bot for a specific number of seconds before the next cycle.
 *   `HOLD`
 
