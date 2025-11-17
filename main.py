@@ -82,9 +82,9 @@ This is an example of a perfect response.
 
 ```json
 {{
-  "reasoning": "Analysis: The 1m chart shows high volatility. I will place a buy order slightly below the current price to catch a potential dip and will then wait for 90 seconds to let the market stabilize before re-evaluating.",
+  "reasoning": "Analysis: The 1m chart shows high volatility. I will place a LONG order slightly below the current price to catch a potential dip and will then wait for 90 seconds to let the market stabilize before re-evaluating.",
   "actions": [
-    "LONG_TP_SL[{float(current_price) * 0.999:.2f}][0.5]",
+    "LONG_TP_SL[{float(current_price) * 0.999:.2f}][{float(current_price) * 1.01:.2f}][{float(current_price) * 0.99:.2f}][0.5]",
     "WAIT[90]"
   ]
 }}
