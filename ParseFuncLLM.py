@@ -69,8 +69,10 @@ def parse_and_execute_commands(trader, instrument_id, llm_response: str):
             quantity = float(quantity_str)
             if action == 'LONG_TP_SL':
                 side = 'buy'
+                sl_price *= 0.99
             else:
                 side = 'sell'
+                sl_price *= 1.01
             result = trader.place_limit_order_with_tp_sl(
                 instrument_id=instrument_id,
                 side=side,
