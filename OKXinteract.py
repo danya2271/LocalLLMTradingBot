@@ -298,38 +298,36 @@ class OKXTrader:
         time.sleep(1)
 
         # Close all open positions using the dedicated endpoint
-        print("\n-> Step 2: Closing all open positions...")
-        try:
-            positions_result = self.account_api.get_positions()
-            if positions_result.get('code') == '0':
-                active_positions = [p for p in positions_result.get('data', []) if p.get('pos') and float(p.get('pos')) != 0]
-                if not active_positions:
-                    print("✅ No open positions to close.")
+        print("\n-> Step 2: Canceling all Algo orders (TP/SL/OCO)...")
+
+        target_algo_types = ['oco', 'trigger']
+
+        for a_type in target_algo_types:
+            try:
+                algo_result = self.trade_api.order_algos_list(instType='MARGIN', ordType=a_type)
+
+                if algo_result.get('code') == '0':
+                    algos_to_cancel = algo_result.get('data', [])
+                    if algos_to_cancel:
+                        algo_cancel_list = []
+                        for algo in algos_to_cancel:
+                            print(f"   - Found {a_type.upper()} ID: {algo['algoId']}")
+                            algo_cancel_list.append({'algoId': algo['algoId'], 'instId': algo['instId']})
+
+                        if algo_cancel_list:
+                            cancel_resp = self.trade_api.cancel_algo_order(algo_cancel_list)
+                            if cancel_resp.get('code') == '0':
+                                 print(f"   ✅ {a_type.upper()} orders canceled.")
+                            else:
+                                 print(f"   ❌ Error canceling {a_type}: {cancel_resp.get('msg')}")
+                    else:
+                        print(f"   - No active {a_type.upper()} orders.")
                 else:
-                    for pos in active_positions:
-                        instId = pos['instId']
-                        mgnMode = pos['mgnMode']
-                        posSide = pos.get('posSide')
-
-                        print(f"   - Sending request to close entire position for {instId} (Mode: {mgnMode})...")
-
-                        params = {
-                            'instId': instId,
-                            'mgnMode': mgnMode,
-                            'posSide': posSide,
-                            'ccy': 'USDT'
-                        }
-
-                        close_result = self.trade_api._request_with_params('POST', '/api/v5/trade/close-position', params)
-
-                        if close_result.get('code') == '0':
-                            print(f"   ✅ Close position request for {instId} sent successfully.")
-                        else:
-                            print(f"   ❌ Failed to send close position request for {instId}: {close_result.get('msg')}")
-            else:
-                print(f"❌ Error fetching open positions: {positions_result.get('msg')}")
-        except Exception as e:
-            print(f"❌ A critical error occurred during position closing: {e}")
+                    # OKX often returns code 0 with empty data, but if code is non-zero, log it
+                    if algo_result.get('code') != '0':
+                        print(f"   ❌ Error fetching {a_type}: {algo_result.get('msg')}")
+            except Exception as e:
+                print(f"   ❌ Critical error handling {a_type}: {e}")
 
 
 # --- USAGE EXAMPLE ---
