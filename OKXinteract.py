@@ -129,20 +129,52 @@ class OKXTrader:
     def get_open_orders(self, instrument_id=None):
         print(f"\n-> Requesting open orders{' for ' + instrument_id if instrument_id else ''}...")
         output_lines = []
+
+        # --- 1. Fetch Standard Orders (Limit/Market) ---
         try:
             result = self.trade_api.get_order_list(instType='MARGIN', instId=instrument_id)
             if result.get('code') == '0':
                 orders = result.get('data', [])
                 if orders:
-                    output_lines.append(f"Found {len(orders)} open orders:")
+                    output_lines.append(f"--- Standard Orders ({len(orders)}) ---")
                     for order in orders:
-                        output_lines.append(f"  - ID: {order['ordId']}, Instrument: {order['instId']}, Side: {order['side']}, Price: {order['px']}, Size: {order['sz']}")
+                        output_lines.append(f"  [STD] ID: {order['ordId']}, Type: {order['ordType']}, Side: {order['side']}, Price: {order['px']}, Size: {order['sz']}")
                 else:
-                    output_lines.append("No open orders found.")
+                    output_lines.append("No standard open orders found.")
             else:
-                output_lines.append(f"❌ Error getting order list: {result.get('msg')}")
+                output_lines.append(f"❌ Error getting standard list: {result.get('msg')}")
         except Exception as e:
-            output_lines.append(f"❌ A critical error occurred during the API call: {e}")
+            output_lines.append(f"❌ Critical error fetching standard orders: {e}")
+
+        # --- 2. Fetch Algo Orders (Looping through specific types) ---
+        # We must request 'oco' and 'trigger' separately because the API rejects combined strings.
+        target_algo_types = ['oco', 'trigger']
+
+        found_algos = False
+        for a_type in target_algo_types:
+            try:
+                # Request specific type
+                result_algo = self.trade_api.order_algos_list(instType='MARGIN', instId=instrument_id, ordType=a_type)
+
+                if result_algo.get('code') == '0':
+                    algos = result_algo.get('data', [])
+                    if algos:
+                        if not found_algos:
+                            output_lines.append(f"\n--- Algo/TP/SL Orders ---")
+                            found_algos = True
+
+                        for algo in algos:
+                            output_lines.append(f"  [{a_type.upper()}] ID: {algo['algoId']}, Side: {algo['side']}, Size: {algo['sz']}, SL: {algo.get('slOrdPx', 'N/A')}, TP: {algo.get('tpOrdPx', 'N/A')}")
+                else:
+                    # Ignore "code 0" with empty data, but log errors
+                    if result_algo.get('code') != '0':
+                         output_lines.append(f"❌ Error getting {a_type} list: {result_algo.get('msg')}")
+
+            except Exception as e:
+                output_lines.append(f"❌ Critical error fetching {a_type} orders: {e}")
+
+        if not found_algos:
+            output_lines.append("No Algo (TP/SL) orders found.")
 
         return "\n".join(output_lines)
 
@@ -236,6 +268,35 @@ class OKXTrader:
         except Exception as e:
             print(f"❌ A critical error occurred during order cancellation: {e}")
 
+        # Cancel all open algo orders
+        print("\n-> Step 2: Canceling all Algo orders (TP/SL/OCO)...")
+        target_algo_types = ['oco', 'trigger']
+
+        for a_type in target_algo_types:
+            try:
+                algo_result = self.trade_api.order_algos_list(instType='MARGIN', state='live', ordType=a_type)
+
+                if algo_result.get('code') == '0':
+                    algos_to_cancel = algo_result.get('data', [])
+                    if algos_to_cancel:
+                        algo_cancel_list = []
+                        for algo in algos_to_cancel:
+                            print(f"   - Found {a_type.upper()} ID: {algo['algoId']}")
+                            algo_cancel_list.append({'algoId': algo['algoId'], 'instId': algo['instId']})
+
+                        if algo_cancel_list:
+                            cancel_resp = self.trade_api.cancel_algo_order(algo_cancel_list)
+                            if cancel_resp.get('code') == '0':
+                                 print(f"   ✅ {a_type.upper()} orders canceled.")
+                            else:
+                                 print(f"   ❌ Error canceling {a_type}: {cancel_resp.get('msg')}")
+                    else:
+                        print(f"   - No active {a_type.upper()} orders.")
+            except Exception as e:
+                print(f"   ❌ Critical error handling {a_type}: {e}")
+
+        time.sleep(1)
+
         # Close all open positions using the dedicated endpoint
         print("\n-> Step 2: Closing all open positions...")
         try:
@@ -281,22 +342,5 @@ if __name__ == "__main__":
     tp_price = round(entry_price * 1.030, 2)
     sl_price = round(entry_price * 0.99, 2)
 
-    place_order_result_string = trader.place_limit_order_with_tp_sl(
-        instrument_id=instrument_sol,
-        side='buy',
-        size=trade_size,
-        price=entry_price,
-        take_profit_price=tp_price,
-        stop_loss_price=sl_price
-    )
-    print(place_order_result_string)
-
-    trader.close_all_orders_and_positions()
-
-    if "successfully" in place_order_result_string:
-        match = re.search(r'Order ID: (\d+)', place_order_result_string)
-        if match:
-            order_id_to_cancel = match.group(1)
-            print(f"\nExtracted Order ID to cancel: {order_id_to_cancel}")
-            time.sleep(2)
-            print(trader.cancel_order(instrument_sol, order_id_to_cancel))
+    print(trader.get_open_positions(instrument_sol))
+    print (trader.get_open_orders(instrument_sol))
