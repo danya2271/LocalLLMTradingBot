@@ -1,6 +1,7 @@
 Config.py
 Bot_config.py
 TelegramConfig.py
+Gemini_config.py
 __pycache__
 data
 coin_config.txt
