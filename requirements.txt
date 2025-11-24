@@ -4,3 +4,4 @@ pandas
 ollama
 requests
 websockets
+google-generativeai

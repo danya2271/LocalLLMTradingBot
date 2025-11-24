@@ -6,6 +6,7 @@ from Get_market import get_okx_market_data, get_okx_current_price
 from Get_balance import GetBal
 from Logging import log_message
 from OllamaInteract import OllamaBot #TODO shift to llama.cpp
+from GeminiInteract import GeminiBot
 from OKXinteract import OKXTrader
 from ParseFuncLLM import parse_and_execute_commands
 from Config import *
@@ -16,7 +17,8 @@ from TelegramInteract import (
 )
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
-bot = OllamaBot()
+#bot = OllamaBot()
+bot = GeminiBot()
 
 def HInfoSend(risk,coin):
     data_config = get_data_config()
