@@ -1,6 +1,6 @@
 import google.generativeai as genai
 import os
-from Gemini_config import API_KEY
+from Gemini_config import API_KEY, GEMINI_MODEL
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 class GeminiBot:
@@ -30,7 +30,7 @@ class GeminiBot:
 
         # Use Gemini 1.5 Pro
         self.model = genai.GenerativeModel(
-            model_name="gemini-1.5-pro-latest",
+            model_name=GEMINI_MODEL,
             generation_config=generation_config,
             safety_settings=safety_settings
         )
