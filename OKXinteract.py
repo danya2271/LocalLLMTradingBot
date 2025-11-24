@@ -115,16 +115,34 @@ class OKXTrader:
 
 
 
+
     def cancel_order(self, instrument_id, order_id):
-        print(f"\n-> Canceling order ID: {order_id} for {instrument_id}...")
+        print(f"\n-> Attempting to cancel ID: {order_id} for {instrument_id}...")
+
         try:
             result = self.trade_api.cancel_order(instId=instrument_id, ordId=order_id)
+
             if result.get('code') == '0':
-                return f"✅ Order {result['data'][0].get('ordId')} successfully canceled."
-            else:
-                return f"❌ Error canceling order: {result.get('msg')}"
+                return f"✅ Standard Order {order_id} canceled."
+
+            print(f"   (Standard cancel failed: {result.get('msg')}. Trying Algo cancel...)")
+
         except Exception as e:
-            return f"❌ A critical error occurred during the API call: {e}"
+            print(f"   (Standard cancel exception: {e}. Trying Algo cancel...)")
+
+        try:
+            params = [{'instId': instrument_id, 'algoId': order_id}]
+            result_algo = self.trade_api.cancel_algo_order(params)
+
+            if result_algo.get('code') == '0':
+                return f"✅ Algo Order {order_id} canceled successfully."
+            else:
+                return f"❌ Failed to cancel {order_id}. Algo Error: {result_algo.get('msg')}"
+
+        except Exception as e:
+            return f"❌ Critical error during Algo cancel: {e}"
+
+
 
     def get_open_orders(self, instrument_id=None):
         print(f"\n-> Requesting open orders{' for ' + instrument_id if instrument_id else ''}...")
