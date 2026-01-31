@@ -20,76 +20,58 @@ def human_format(num):
     return '{}{}'.format('{:f}'.format(num).rstrip('0').rstrip('.'), ['', 'K', 'M', 'B', 'T'][magnitude])
 
 def get_okx_market_data(instId='BTC-USDT'):
-    """
-    Fetches and formats candlestick data from the OKX API.
-
-    Args:
-        instId (str): The instrument ID (e.g., 'BTC-USDT').
-
-    Returns:
-        dict: A dictionary of pandas DataFrames containing the requested market data.
-    """
-    print("Fetching candlestick info for", instId)
-    intervals = ['1m', '5m', '15m', '1H']
+    print(f"Fetching candlestick info for {instId}...")
+    intervals = ['15m']
     market_data = {}
 
     for interval in intervals:
-        # This is the most reliable way to get the latest 100 candles from the API.
         url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}"
 
-        response = requests.get(url)
+        # --- RETRY ---
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                break
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️ Network error (Attempt {attempt+1}/{max_retries}): {e}")
+                time.sleep(2)
+                if attempt == max_retries - 1:
+                    print(f"❌ Failed to get data for {instId} after retries.")
+                    return {}
+        # ---------------------------------------
+
         if response.status_code == 200:
             data = response.json().get('data')
             if not data:
-                market_data[interval] = f"No data returned from API for {interval}. The endpoint may be temporarily unavailable or the pair is not traded."
                 continue
 
-            # Full list of columns returned by the API
-            columns = [
-                'timestamp', 'open', 'high', 'low', 'close',
-                'volume', 'volume_currency', 'volume_currency_quote', 'confirm'
-            ]
-
+            columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'volCcy', 'volCcyQuote', 'confirm']
             df = pd.DataFrame(data, columns=columns)
 
-            # Select only the required columns
-            df = df[['timestamp', 'high', 'low', 'close', 'volume', 'confirm']]
-
-            # Convert timestamp to a readable format
+            df = df[['timestamp', 'high', 'low', 'close', 'volume']]
             df['timestamp'] = pd.to_numeric(df['timestamp'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.strftime('%H:%M')
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-            # Convert data columns to numeric types
-            numeric_cols = ['high', 'low', 'close', 'volume']
-            for col in numeric_cols:
+            for col in ['high', 'low', 'close', 'volume']:
                 df[col] = pd.to_numeric(df[col])
 
-            # Set timestamp as the index
             df.set_index('timestamp', inplace=True)
-
-            # The API returns the latest data first, so we reverse it to have time ascend.
             df = df.iloc[::-1]
 
-            # --- ТЕХНИЧЕСКИЙ АНАЛИЗ (Через библиотеку ta) ---
-
-            # 1. RSI
+            # Индикаторы
             rsi_ind = RSIIndicator(close=df["close"], window=14)
             df["RSI"] = rsi_ind.rsi()
 
-            # 2. EMA
             ema_ind = EMAIndicator(close=df["close"], window=50)
             df["EMA_50"] = ema_ind.ema_indicator()
 
-            # 3. ATR
             atr_ind = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=14)
             df["ATR"] = atr_ind.average_true_range()
 
-            # Убираем NaN (первые строки, где индикаторы еще не посчитались)
             df.dropna(inplace=True)
-
             market_data[interval] = df.tail(50)
-        else:
-            market_data[interval] = f"Error fetching data for {interval}: Status {response.status_code} - {response.text}"
 
     return market_data
 
