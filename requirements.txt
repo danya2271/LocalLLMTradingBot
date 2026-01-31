@@ -1,6 +1,7 @@
 python-okx
 okx-sdk
 pandas
+ta
 ollama
 requests
 websockets

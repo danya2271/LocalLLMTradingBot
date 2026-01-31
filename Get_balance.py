@@ -1,54 +1,32 @@
 import okx.Account as Account
-from Logging import log_message
 from Config import *
 
-
-def GetBal(coin):
+def GetBal(coin_pair):
     """
-    Fetches and displays the full account balance from OKX,
-    including liabilities to correctly show negative balances (equity).
+    Returns available Quote Currency (usually USDT) as a float.
     """
-    output_lines = []
-    base_currency, quote_currency = coin.split('-')
-
     try:
-        account_api = Account.AccountAPI(api_key, secret_key, passphrase, False, '0') # '0' for live trading
-
-        result = account_api.get_account_balance()
-
-        if result and result.get('code') == '0':
-            output_lines.append("Account Balance:")
-
-            for balance in result['data'][0]['details']:
-                ccy = balance.get('ccy', 'N/A')
-                if ccy == base_currency or ccy == quote_currency:
-                    avail_bal = balance.get('availBal', '0')
-                    frozen_bal = balance.get('frozenBal', '0')
-                    equity = balance.get('eq', '0')
-                    liabilities = balance.get('liab', '0')
-                    interest = balance.get('interest', '0')
-
-                    output_lines.append(f"  Currency: {ccy}")
-                    output_lines.append(f"  Available Balance: {avail_bal}")
-                    output_lines.append(f"  Frozen Balance: {frozen_bal}")
-                    output_lines.append(f"  Liabilities (Debt): {liabilities}")
-                    output_lines.append(f"  Accrued Interest: {interest}")
-                    output_lines.append(f"  Net Equity: {equity}")
-                    output_lines.append("-" * 20)
+        if '-' in coin_pair:
+            quote_currency = coin_pair.split('-')[1]
         else:
-            output_lines.append("Failed to retrieve account balance.")
-            error_msg = result.get('msg') if result else "No response from API."
-            output_lines.append(f"Error details: {error_msg}")
+            quote_currency = coin_pair
 
-        final_output = "\n".join(output_lines)
-        log_message(final_output)
-        return final_output
+        account_api = Account.AccountAPI(api_key, secret_key, passphrase, False, '0')
+
+        result = account_api.get_account_balance(ccy=quote_currency)
+
+        if result and result.get('code') == '0' and result.get('data'):
+            details = result['data'][0]['details']
+            for balance in details:
+                if balance.get('ccy') == quote_currency:
+                    return float(balance.get('availBal', 0.0))
+
+        print(f"Error getting balance: {result}")
+        return 0.0
 
     except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        output_lines.append(f"An unexpected error occurred: {e}")
-        output_lines.append(error_details)
-        final_output = "\n".join(output_lines)
-        log_message(final_output)
-        return final_output
+        print(f"Exception inside GetBal: {e}")
+        return 0.0
+if __name__ == "__main__":
+    usdt_balance = get_available_balance("SOL-USDT")
+    print(f"Доступно для торговли: {usdt_balance} USDT")

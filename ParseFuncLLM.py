@@ -4,123 +4,98 @@ from OKXinteract import OKXTrader
 from Get_market import get_okx_current_price
 from Config import *
 from TelegramInteract import get_slippage_config
+from Get_balance import GetBal
+import math
 
-def parse_and_execute_commands(trader, instrument_id, llm_response: str):
+def parse_and_execute_commands(trader, instrument_id, llm_response, current_price, atr):
     """
-    Parses a complex LLM response to find and execute trading commands.
-
-    Returns:
-        tuple[str, int | None]: A tuple containing the string of execution results
-                                and an integer for the wait time in seconds, or None.
+    ATR-based execution logic.
     """
-    print(f"\n--- Processing LLM Response ---")
-    results = []
-    commands_to_parse = []
-    wait_seconds = None # Initialize wait time as None
-    cleaned_text = llm_response.strip()
+    print(f"\n--- Processing Strategy ---")
 
     try:
-        json_start = cleaned_text.find('{')
-        json_end = cleaned_text.rfind('}')
-        if json_start != -1 and json_end != -1:
-            json_str = cleaned_text[json_start : json_end + 1]
-            data = json.loads(json_str)
-            if 'actions' in data and isinstance(data['actions'], list):
-                commands_to_parse = data['actions']
-            elif 'action' in data:
-                commands_to_parse.append(data['action'])
-            else:
-                return "❌ Action: UNKNOWN. JSON is missing 'actions' or 'action' key.", None
+        # Пытаемся найти JSON
+        json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group(0))
         else:
-            return "❌ Action: UNKNOWN. No valid JSON block found.", None
-    except json.JSONDecodeError:
-        return "❌ Action: UNKNOWN. Malformed JSON detected.", None
+            return "❌ No JSON found", 60
 
-    print(f"Found commands to parse: {commands_to_parse}")
+        action = data.get('action', 'WAIT').upper()
+        reasoning = data.get('reasoning', '')
 
-    if not commands_to_parse:
-        return "❌ Action: UNKNOWN. No commands found in JSON.", None
+        print(f"Decision: {action} | Reason: {reasoning}")
 
-    slippage_config = get_slippage_config()
-    buy_slippage_multiplier = 1 - (slippage_config.get('buy_slippage', 0.1) / 100.0)
-    sell_slippage_multiplier = 1 + (slippage_config.get('sell_slippage', 0.1) / 100.0)
+        if action == 'WAIT':
+            return f"Bot decided to WAIT: {reasoning}", 60
 
-    for command_str in commands_to_parse:
-        command = command_str.strip().upper()
-        open_pos_pattern = r'^(LONG_TP_SL|SHORT_TP_SL)\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]\[([\d.]+)\]$'
-        trade_pattern = r'^(BUY|SELL)\[([\d.]+)\]\[([\d.]+)\]$'
-        cancel_pattern = r'^CANCEL\[(\w+)\]$'
-        wait_pattern = r'^WAIT\[(\d+)\]$'
+        # --- МАТЕМАТИКА НА PYTHON (НЕ НА LLM) ---
+        # Настройки риск-менеджмента
+        sl_multiplier = 2.0  # Стоп-лосс = 2 * ATR
+        tp_multiplier = 3.0  # Тейк-профит = 3 * ATR (Риск/Прибыль 1:1.5)
 
-        open_pos_match = re.match(open_pos_pattern, command)
-        trade_match = re.match(trade_pattern, command)
-        cancel_match = re.match(cancel_pattern, command)
-        wait_match = re.match(wait_pattern, command)
+        if action == 'BUY':
+            entry_price = current_price
+            sl_price = entry_price - (atr * sl_multiplier)
+            tp_price = entry_price + (atr * tp_multiplier)
 
-        if open_pos_match:
-            action, price_str, tp_price_str, sl_price_str, quantity_str = open_pos_match.groups()
-            #max_quantity, min_quantity = trader.get_max_order_limits_quantity(instrument_id)
-            #max_quantity = float(max_quantity)
-            #min_quantity = float(min_quantity)
-            tp_price = float(tp_price_str)
-            sl_price = float(sl_price_str)
-            cur_price = float(get_okx_current_price(instrument_id))
-            price = float(price_str)
-            quantity = float(quantity_str)
-            if action == 'LONG_TP_SL':
-                side = 'buy'
-            else:
-                side = 'sell'
+            available_usdt = GetBal(instrument_id)
+
+            pct_per_trade = 2.50 # coeff of trading
+            trade_amount_usdt = available_usdt * pct_per_trade
+
+            if trade_amount_usdt < 2.0:
+                return f"❌ Skip: Balance too low ({trade_amount_usdt:.2f} USDT)", 60
+
+            print(f"Calculated Trade Amount: {trade_amount_usdt:.2f} USDT based on balance {available_usdt}")
+
+            raw_qty = trade_amount_usdt / entry_price
+
+            qty = math.floor(raw_qty * 100) / 100.0
+
             result = trader.place_limit_order_with_tp_sl(
                 instrument_id=instrument_id,
-                side=side,
-                size=quantity,
-                price=price,
+                side='buy',
+                size=qty,
+                price=entry_price,
                 take_profit_price=tp_price,
                 stop_loss_price=sl_price
             )
-            results.append(result)
+            return f"✅ BUY Executed. Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
 
-        if trade_match:
-            action, price_str, quantity_str = trade_match.groups()
-            max_quantity, min_quantity = trader.get_max_order_limits_quantity(instrument_id)
-            max_quantity = float(max_quantity)
-            min_quantity = float(min_quantity)
-            cur_price = float(get_okx_current_price(instrument_id))
-            price = float(price_str)
-            quantity = float(quantity_str)
-            if action == 'BUY':
-                side = 'buy'
-                if cur_price <= price: price = cur_price * buy_slippage_multiplier
-                if quantity >= max_quantity: quantity = max_quantity * 0.9
-            else:
-                side = 'sell'
-                if cur_price >= price: price = cur_price * sell_slippage_multiplier
-                if quantity >= min_quantity: quantity = min_quantity * 0.9
-            result = trader.place_limit_order_with_leverage(instrument_id, side, quantity, price)
-            results.append(result)
+        elif action == 'SELL':
+            entry_price = current_price
+            sl_price = entry_price + (atr * sl_multiplier)
+            tp_price = entry_price - (atr * tp_multiplier)
 
-        elif cancel_match:
-            order_id = cancel_match.groups()
-            result = trader.cancel_order(instrument_id, order_id)
-            results.append(result)
+            available_usdt = GetBal(instrument_id)
 
-        elif wait_match:
-            time_to_wait = int(wait_match.groups()[0])
-            wait_seconds = time_to_wait
-            results.append(f"✅ Action: WAIT. Will pause for {time_to_wait} seconds after this cycle.")
+            pct_per_trade = 2.50 # coeff of trading
+            trade_amount_usdt = available_usdt * pct_per_trade
 
-        elif command == 'CLOSE_ALL':
-            trader.close_all_orders_and_positions()
-            results.append("Action: CLOSE_ALL. Closed all orders and positions")
+            if trade_amount_usdt < 2.0:
+                return f"❌ Skip: Balance too low ({trade_amount_usdt:.2f} USDT)", 60
 
-        elif command == 'HOLD':
-            results.append("✅ Action: HOLD. No trade was executed.")
+            print(f"Calculated Trade Amount: {trade_amount_usdt:.2f} USDT based on balance {available_usdt}")
 
-        else:
-            results.append(f"❌ Action: UNKNOWN. Command '{command_str}' has an invalid format.")
+            raw_qty = trade_amount_usdt / entry_price
 
-    return "\n".join(results), wait_seconds
+            qty = math.floor(raw_qty * 100) / 100.0
+
+            result = trader.place_limit_order_with_tp_sl(
+                instrument_id=instrument_id,
+                side='sell',
+                size=qty,
+                price=entry_price,
+                take_profit_price=tp_price,
+                stop_loss_price=sl_price
+            )
+            return f"✅ SELL Executed. Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
+
+    except Exception as e:
+        return f"Error executing: {e}", 60
+
+    return "No action taken", 60
 
 if __name__ == "__main__":
     trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)

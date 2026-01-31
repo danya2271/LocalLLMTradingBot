@@ -1,5 +1,8 @@
 import requests
 import pandas as pd
+from ta.momentum import RSIIndicator
+from ta.trend import EMAIndicator
+from ta.volatility import AverageTrueRange
 import time
 pd.set_option("display.max_rows", None)
 
@@ -67,10 +70,24 @@ def get_okx_market_data(instId='BTC-USDT'):
             # The API returns the latest data first, so we reverse it to have time ascend.
             df = df.iloc[::-1]
 
-            # Format only the 'volume' column
-            df['volume'] = df['volume'].apply(human_format)
+            # --- ТЕХНИЧЕСКИЙ АНАЛИЗ (Через библиотеку ta) ---
 
-            market_data[interval] = df
+            # 1. RSI
+            rsi_ind = RSIIndicator(close=df["close"], window=14)
+            df["RSI"] = rsi_ind.rsi()
+
+            # 2. EMA
+            ema_ind = EMAIndicator(close=df["close"], window=50)
+            df["EMA_50"] = ema_ind.ema_indicator()
+
+            # 3. ATR
+            atr_ind = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=14)
+            df["ATR"] = atr_ind.average_true_range()
+
+            # Убираем NaN (первые строки, где индикаторы еще не посчитались)
+            df.dropna(inplace=True)
+
+            market_data[interval] = df.tail(50)
         else:
             market_data[interval] = f"Error fetching data for {interval}: Status {response.status_code} - {response.text}"
 
