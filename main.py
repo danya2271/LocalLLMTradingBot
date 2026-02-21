@@ -17,8 +17,8 @@ from TelegramInteract import (
 )
 
 trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
-#bot = OllamaBot()
-bot = GeminiBot()
+bot = OllamaBot()
+#bot = GeminiBot()
 
 def HInfoSend(risk, coin):
     data_config = get_data_config()

@@ -28,10 +28,10 @@ def get_okx_market_data(instId='BTC-USDT'):
         url = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar={interval}"
 
         # --- RETRY ---
-        max_retries = 3
+        max_retries = 10
         for attempt in range(max_retries):
             try:
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, timeout=15)
                 response.raise_for_status()
                 break
             except requests.exceptions.RequestException as e:
@@ -87,16 +87,35 @@ def get_okx_current_price(instId='BTC-USDT'):
         str: The last traded price as a string, or an error message.
     """
     url = f"https://www.okx.com/api/v5/market/ticker?instId={instId}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json().get('data')
-        if data:
-            return data[0]['last']
-        else:
-            return "No data returned from API for this instrument."
-    else:
-        return f"Error fetching current price: {response.text}"
 
+    headers = {
+        "User-Agent": "LocalLLMTradingBot/1.0",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Connection": "close"
+    }
+
+    for i in range(3):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json().get('data')
+                if data:
+                    return data[0]['last']
+
+            # If status isn't 200, wait a second and retry
+            time.sleep(1)
+
+        except requests.exceptions.RequestException as e:
+            print(f"Network/Timeout error (Attempt {i+1}/3): {e}")
+            time.sleep(2)
+
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            time.sleep(1)
+
+    return "0.0"
 
 # --- Example Usage ---
 if __name__ == '__main__':
