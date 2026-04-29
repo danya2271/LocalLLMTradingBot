@@ -4,8 +4,11 @@ from OKXinteract import OKXTrader
 from Get_market import get_okx_current_price
 from Config import *
 from TelegramInteract import get_slippage_config
-from Get_balance import GetBal
+from Bybitinteract import BybitTrader
+from bybit_config import BYBIT_API_KEY, BYBIT_SECRET_KEY, BYBIT_IS_DEMO
 import math
+
+trader = BybitTrader(BYBIT_API_KEY, BYBIT_SECRET_KEY, is_demo=BYBIT_IS_DEMO)
 
 def parse_and_execute_commands(trader, instrument_id, llm_response, current_price, atr):
     """
@@ -35,13 +38,15 @@ def parse_and_execute_commands(trader, instrument_id, llm_response, current_pric
         tp_multiplier = 3.0  # Тейк-профит = 3 * ATR (Риск/Прибыль 1:1.5)
 
         if action == 'BUY':
-            entry_price = current_price
-            sl_price = entry_price - (atr * sl_multiplier)
-            tp_price = entry_price + (atr * tp_multiplier)
+            # 1. ROUND PRICES FOR BYBIT (Max 3-4 decimal places for SOL)
+            entry_price = round(current_price, 3)
+            sl_price = round(entry_price - (atr * sl_multiplier), 3)
+            tp_price = round(entry_price + (atr * tp_multiplier), 3)
 
-            available_usdt = GetBal(instrument_id)
+            available_usdt = trader.get_available_balance(instrument_id)
 
-            pct_per_trade = 2.50 # coeff of trading
+            # NOTE: 2.50 means you are trying to use 250% of your balance (Leverage)
+            pct_per_trade = 2.50
             trade_amount_usdt = available_usdt * pct_per_trade
 
             if trade_amount_usdt < 2.0:
@@ -51,8 +56,10 @@ def parse_and_execute_commands(trader, instrument_id, llm_response, current_pric
 
             raw_qty = trade_amount_usdt / entry_price
 
-            qty = math.floor(raw_qty * 100) / 100.0
+            # 2. ROUND QUANTITY (Bybit requires 1 or 2 decimal places for SOL)
+            qty = round(raw_qty, 1)
 
+            # 3. CAPTURE AND RETURN THE REAL RESULT
             result = trader.place_limit_order_with_tp_sl(
                 instrument_id=instrument_id,
                 side='buy',
@@ -61,16 +68,17 @@ def parse_and_execute_commands(trader, instrument_id, llm_response, current_pric
                 take_profit_price=tp_price,
                 stop_loss_price=sl_price
             )
-            return f"✅ BUY Executed. Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
+            return f"{result} | Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
 
         elif action == 'SELL':
-            entry_price = current_price
-            sl_price = entry_price + (atr * sl_multiplier)
-            tp_price = entry_price - (atr * tp_multiplier)
+            # 1. ROUND PRICES FOR BYBIT
+            entry_price = round(current_price, 3)
+            sl_price = round(entry_price + (atr * sl_multiplier), 3)
+            tp_price = round(entry_price - (atr * tp_multiplier), 3)
 
-            available_usdt = GetBal(instrument_id)
+            available_usdt = trader.get_available_balance(instrument_id)
 
-            pct_per_trade = 2.50 # coeff of trading
+            pct_per_trade = 2.50
             trade_amount_usdt = available_usdt * pct_per_trade
 
             if trade_amount_usdt < 2.0:
@@ -80,8 +88,10 @@ def parse_and_execute_commands(trader, instrument_id, llm_response, current_pric
 
             raw_qty = trade_amount_usdt / entry_price
 
-            qty = math.floor(raw_qty * 100) / 100.0
+            # 2. ROUND QUANTITY
+            qty = round(raw_qty, 1)
 
+            # 3. CAPTURE AND RETURN THE REAL RESULT
             result = trader.place_limit_order_with_tp_sl(
                 instrument_id=instrument_id,
                 side='sell',
@@ -90,7 +100,7 @@ def parse_and_execute_commands(trader, instrument_id, llm_response, current_pric
                 take_profit_price=tp_price,
                 stop_loss_price=sl_price
             )
-            return f"✅ SELL Executed. Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
+            return f"{result} | Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
 
     except Exception as e:
         return f"Error executing: {e}", 60

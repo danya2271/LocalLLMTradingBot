@@ -1,9 +1,7 @@
-
 import pandas as pd
 import time
 import threading
 from Get_market import get_okx_market_data, get_okx_current_price
-from Get_balance import GetBal
 from Logging import log_message
 from OllamaInteract import OllamaBot #TODO shift to llama.cpp
 from llamacppInteract import llamacppBot
@@ -28,7 +26,8 @@ bot = llamacppBot(LLM_API_KEY, host=LLM_HOST)
 
 def HInfoSend(risk, coin):
     data_config = get_data_config()
-    Bal = GetBal(coin)
+    Bal = trader.get_available_balance(coin)
+    print(f"Available Balance for trading: {Bal} USDT")
     current_price = float(get_okx_current_price(coin))
     btc_market_data = get_okx_market_data(coin)
 
@@ -48,7 +47,7 @@ def HInfoSend(risk, coin):
 
     # Определяем тренд жесткой логикой Python (точнее чем LLM)
     trend = "BULLISH" if price > ema_50 else "BEARISH"
-    rsi_status = "OVERBOUGHT" if rsi > 70 else ("OVERSOLD" if rsi < 30 else "NEUTRAL")
+    rsi_status = "OVERBOUGHT" if rsi > 74 else ("OVERSOLD" if rsi < 26 else "NEUTRAL")
 
     # Формируем промпт. ЗАМЕТЬТЕ: Мы не просим модель считать цифры!
     # Мы просим только ACTION.

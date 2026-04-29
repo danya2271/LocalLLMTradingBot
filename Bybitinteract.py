@@ -177,6 +177,61 @@ class BybitTrader:
 
         return "\n".join(output_lines)
 
+    def get_available_balance(self, coin_pair):
+        """
+        Returns available Quote Currency (usually USDT) as a float from Bybit.
+        """
+        try:
+            # Extract quote currency (e.g., SOL-USDT -> USDT)
+            if '-' in coin_pair:
+                quote_currency = coin_pair.split('-')[1]
+            else:
+                quote_currency = coin_pair
+
+            print(f"\n-> Fetching balance for {quote_currency}...")
+
+            # First try Unified Trading Account (UTA)
+            params = {
+                "accountType": "UNIFIED",
+                "coin": quote_currency
+            }
+            result = self._request("GET", "/v5/account/wallet-balance", params)
+
+            # ONLY fallback to CONTRACT if the API explicitly returns an error for UNIFIED
+            # (Do not fallback if the request succeeds but the balance is simply 0)
+            if str(result.get("retCode")) != "0":
+                params["accountType"] = "CONTRACT"
+                result = self._request("GET", "/v5/account/wallet-balance", params)
+
+            # Process the response
+            if str(result.get("retCode")) == "0":
+                list_data = result.get("result", {}).get("list", [])
+
+                # If list_data is empty, the account exists but has 0 balance
+                if not list_data:
+                    return 0.0
+
+                coins = list_data[0].get("coin", [])
+                # If coins array is empty, the specific coin has 0 balance
+                if not coins:
+                    return 0.0
+
+                # Find the specific coin and return its balance
+                for c in coins:
+                    if c.get("coin") == quote_currency:
+                        # Using walletBalance. (Could also use 'availableToWithdraw' depending on your needs)
+                        return float(c.get("walletBalance", 0.0))
+
+                # If loop finishes and coin isn't found, balance is 0
+                return 0.0
+
+            print(f"❌ Error getting balance: {result.get('retMsg', result)}")
+            return 0.0
+
+        except Exception as e:
+            print(f"Exception inside get_available_balance: {e}")
+            return 0.0
+
     def close_all_orders_and_positions(self):
         """ Cancels all open orders and closes all active positions via market orders """
         print(f"\n🚨 Initiating full closure of all open orders and positions on Bybit...")
