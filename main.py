@@ -10,6 +10,8 @@ from llamacppInteract import llamacppBot
 from GeminiInteract import GeminiBot
 from OKXinteract import OKXTrader
 from ParseFuncLLM import parse_and_execute_commands
+from Bybitinteract import BybitTrader
+from bybit_config import BYBIT_API_KEY, BYBIT_SECRET_KEY, BYBIT_IS_DEMO
 from Config import *
 from llamacpp_config import LLM_API_KEY, LLM_HOST
 from TelegramConfig import *
@@ -18,7 +20,8 @@ from TelegramInteract import (
     get_data_config, get_wait_config
 )
 
-trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
+trader = BybitTrader(BYBIT_API_KEY, BYBIT_SECRET_KEY, is_demo=BYBIT_IS_DEMO)
+#trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
 #bot = OllamaBot()
 #bot = GeminiBot()
 bot = llamacppBot(LLM_API_KEY, host=LLM_HOST)
