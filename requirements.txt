@@ -1,8 +1,5 @@
-python-okx
-okx-sdk
 pandas
 ta
-ollama
 requests
 websockets
-google-generativeai
+telethon

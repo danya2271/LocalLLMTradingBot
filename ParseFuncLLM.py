@@ -1,6 +1,5 @@
 import json
 import re
-from OKXinteract import OKXTrader
 from Get_market import get_okx_current_price
 from Config import *
 from TelegramInteract import get_slippage_config
@@ -108,7 +107,7 @@ def parse_and_execute_commands(trader, instrument_id, llm_response, current_pric
     return "No action taken", 60
 
 if __name__ == "__main__":
-    trader = OKXTrader(api_key, secret_key, passphrase, is_demo=False)
+    trader = BybitTrader(BYBIT_API_KEY, BYBIT_SECRET_KEY, is_demo=BYBIT_IS_DEMO)
     test_response = """
     ```json
     {
