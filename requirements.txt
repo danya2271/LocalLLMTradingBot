@@ -3,3 +3,4 @@ ta
 requests
 websockets
 telethon
+rich
