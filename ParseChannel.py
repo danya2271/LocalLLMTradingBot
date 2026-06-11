@@ -2,6 +2,11 @@ import os
 import re
 import asyncio
 from telethon import TelegramClient
+import json
+from datetime import datetime, timezone, timedelta
+from Database import is_message_checked, mark_message_checked, process_extracted_data
+from llamacppInteract import llamacppBot
+from llamacpp_config import LLM_API_KEY, LLM_HOST
 
 try:
     import easyocr
@@ -120,6 +125,13 @@ async def recognize_text_from_message(channel_id, message_id):
         entity = await client.get_input_entity(channel_id)
         message = await client.get_messages(entity, ids=message_id)
 
+        print("\n--- Original Telegram Message Text ---")
+        if message.text:
+            print(message.text)
+        else:
+            print("[No text/caption in the Telegram message]")
+        print("-" * 40)
+
         if not message:
             print(f"Could not find message ID {message_id}.")
             return
@@ -177,68 +189,103 @@ async def recognize_text_from_message(channel_id, message_id):
     finally:
         await client.disconnect()
 
+bot = llamacppBot(LLM_API_KEY, host=LLM_HOST)
+
+def ask_llm_for_json(text_content):
+    """Sends the combined OCR + text to the LLM to extract JSON data."""
+    prompt = f"""
+    ROLE: You are an expert at extracting crypto trading signals from Telegram messages.
+    Extract the following information from the text into a JSON object.
+
+    RULES:
+    1. "symbol": The trading pair (e.g., "ATOMUSDT"). Return null if not found.
+    2. "direction": 1 if the signal says LONG or BUY. 0 if it says SHORT or SELL. Return null if not found.
+    3. "entry_price": The numerical entry price. Return null if not found.
+    4. "take_profit": The LOWEST take profit target if multiple are given (e.g., if TP1=1.825 and TP2=1.9, return 1.825). Return null if not found.
+    5. "stop_loss": The numerical stop loss price. Return null if not found.
+    6. Only return valid JSON. Do not include any explanations.
+
+    TEXT TO PARSE:
+    "{text_content}"
+
+    OUTPUT FORMAT:
+    {{
+        "symbol": "ATOMUSDT",
+        "direction": 1,
+        "entry_price": 1.803,
+        "take_profit": 1.825,
+        "stop_loss": 1.73
+    }}
+    """
+    bot.add_to_message(prompt)
+    response = bot.send_and_reset_message()
+
+    try:
+        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(0))
+    except Exception as e:
+        print(f"Failed to parse JSON from LLM: {e}")
+
+    return {"symbol": None, "direction": None, "entry_price": None, "take_profit": None, "stop_loss": None}
+
 async def parse_last_messages(channel_id):
-    """
-    Connects to Telegram, retrieves the last 30 messages from a channel ID or username,
-    prints the message text, and downloads images using the custom name format.
-    """
-    # 1. Automatic Formatting for Channel IDs
-    # If the user passed a positive integer, automatically format it into a marked channel ID
     if isinstance(channel_id, int) and channel_id > 0:
-        formatted_id = int(f"-100{channel_id}")
-        print(f"Auto-formatting ID {channel_id} to marked channel ID: {formatted_id}")
-        channel_id = formatted_id
+        channel_id = int(f"-100{channel_id}")
 
     client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
     try:
         await client.start()
-        print(f"Connected to Telegram. Fetching messages...")
-
-        # Resolve the entity
         entity = await client.get_input_entity(channel_id)
 
-        count = 0
-        async for message in client.iter_messages(entity, limit=5):
-            count += 1
-            text_preview = (message.text[:50].replace("\n", " ") + "...") if message.text else "[No Text]"
-            print(f"\n[{count}/30] Msg ID: {message.id} | Date: {message.date} | Text: {text_preview}")
+        now_utc = datetime.now(timezone.utc)
 
-            # Check for images (regular photos or files with image MIME-types)
-            is_image = False
-            if message.photo:
-                is_image = True
-            elif message.document and message.document.mime_type and message.document.mime_type.startswith('image/'):
-                is_image = True
+        async for message in client.iter_messages(entity, limit=10):
+            # CONDITION 2: Message is relevant (posted less than 10 min ago)
+            if (now_utc - message.date) > timedelta(minutes=10):
+                continue
 
+            # CONDITION 1: Message is checked?
+            if is_message_checked(message.id):
+                continue
+
+            print(f"\n[NEW] Processing Message ID: {message.id}")
+            mark_message_checked(message.id)
+
+            full_extracted_text = message.text or ""
+
+            # Check for images and do OCR if needed
+            is_image = message.photo or (message.document and message.document.mime_type and message.document.mime_type.startswith('image/'))
             if is_image:
-                extension = message.file.ext if (message.file and message.file.ext) else '.jpg'
+                # Note: Assumes you have your target_path logic from your original code here
+                target_path = os.path.join(DOWNLOAD_DIR, f"temp_{message.id}.jpg")
+                await client.download_media(message, file=target_path)
 
-                # Format: channel-id_message-id_indexofmedia.format
-                # Standard channel IDs are negative, so we strip the minus sign for a cleaner file name
-                clean_channel_id = str(channel_id).replace("-", "")
-                filename = f"{clean_channel_id}_{message.id}_0{extension}"
-                target_path = os.path.join(DOWNLOAD_DIR, filename)
+                reader = get_ocr_reader()
+                if reader:
+                    raw_results = reader.readtext(target_path)
+                    ocr_text = " ".join([box[1] for box in raw_results])
+                    full_extracted_text += "\n" + ocr_text
 
-                if os.path.exists(target_path):
-                    print(f"  -> Image already downloaded: {filename} (Skipping)")
-                else:
-                    print(f"  -> New image found. Downloading: {filename}...")
-                    await client.download_media(message, file=target_path)
-                    print(f"  -> Download complete.")
+            if not full_extracted_text.strip():
+                continue
+
+            # CONDITION 3: Message is useful (Checked by LLM)
+            extracted_json = ask_llm_for_json(full_extracted_text)
+            print(f"LLM Extracted: {extracted_json}")
+
+            # Save/Merge to Database
+            is_useful = process_extracted_data(extracted_json)
+            if is_useful:
+                print("Message contained useful data. Database updated.")
             else:
-                print("  -> No image attached.")
+                print("Message did not contain useful trading data.")
 
-    except ValueError as e:
-        print(f"\nError: {e}")
-        print("\nSuggestions to resolve this:")
-        print("1. Ensure your account is actually a member of or has viewed this channel before.")
-        print("2. If it's a public channel, try using its string username (e.g., '@public_channel_name') instead of the number.")
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}")
+        print(f"Error in parse_last_messages: {e}")
     finally:
         await client.disconnect()
-        print("\nDisconnected.")
 
 if __name__ == '__main__':
     # Enter your channel ID

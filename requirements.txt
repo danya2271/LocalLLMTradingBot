@@ -5,3 +5,4 @@ websockets
 telethon
 rich
 easyocr
+psycopg2-binary
