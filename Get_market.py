@@ -67,8 +67,15 @@ def get_okx_market_data(instId='BTC-USDT'):
             ema_ind = EMAIndicator(close=df["close"], window=50)
             df["EMA_50"] = ema_ind.ema_indicator()
 
+            # Добавляем быструю EMA для отслеживания перегретости
+            ema_ind_10 = EMAIndicator(close=df["close"], window=10)
+            df["EMA_10"] = ema_ind_10.ema_indicator()
+
             atr_ind = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=14)
             df["ATR"] = atr_ind.average_true_range()
+
+            # Добавляем средний объем за 20 свечей для поиска аномалий
+            df["Vol_SMA_20"] = df["volume"].rolling(window=20).mean()
 
             df.dropna(inplace=True)
             market_data[interval] = df.tail(50)
