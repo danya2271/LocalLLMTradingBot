@@ -57,6 +57,10 @@ def timeout_old_orders():
 
 def process_extracted_data(extracted_data):
     symbol = extracted_data.get("symbol")
+
+    if symbol == "null":
+        symbol = None
+
     direction = extracted_data.get("direction")
     entry_price = extracted_data.get("entry_price")
     take_profit = extracted_data.get("take_profit")

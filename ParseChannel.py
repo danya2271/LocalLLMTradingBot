@@ -210,7 +210,7 @@ def ask_llm_for_json(text_content):
 
     OUTPUT FORMAT:
     {{
-        "symbol": "null",
+        "symbol": null,
         "direction": null,
         "entry_price": null,
         "take_profit": null,

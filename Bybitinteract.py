@@ -182,9 +182,17 @@ class BybitTrader:
         Returns available Quote Currency (usually USDT) as a float from Bybit.
         """
         try:
-            # Extract quote currency (e.g., SOL-USDT -> USDT)
+            # Handle invalid/null inputs gracefully
+            if not coin_pair or coin_pair.lower() == "null":
+                return 0.0
+
+            # Extract quote currency (e.g., SOL-USDT -> USDT, or SOLUSDT -> USDT)
             if '-' in coin_pair:
                 quote_currency = coin_pair.split('-')[1]
+            elif coin_pair.endswith('USDT'):
+                quote_currency = 'USDT'
+            elif coin_pair.endswith('USDC'):
+                quote_currency = 'USDC'
             else:
                 quote_currency = coin_pair
 
