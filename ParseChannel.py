@@ -210,11 +210,11 @@ def ask_llm_for_json(text_content):
 
     OUTPUT FORMAT:
     {{
-        "symbol": "ATOMUSDT",
-        "direction": 1,
-        "entry_price": 1.803,
-        "take_profit": 1.825,
-        "stop_loss": 1.73
+        "symbol": "null",
+        "direction": null,
+        "entry_price": null,
+        "take_profit": null,
+        "stop_loss": null
     }}
     """
     bot.add_to_message(prompt)
