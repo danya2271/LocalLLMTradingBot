@@ -17,6 +17,68 @@ class BybitTrader:
         self.recv_window = "5000"
         print(f"BybitTrader initialized in {'DEMO (Testnet)' if is_demo else 'LIVE (Mainnet)'} mode.")
 
+    def _set_trading_stop(self, symbol, stop_loss_price_str):
+        """ Устанавливает новый StopLoss для активной позиции (Безубыток) """
+        params = {
+            "category": "linear",
+            "symbol": symbol,
+            "stopLoss": stop_loss_price_str, # Передаем как строку
+            "positionIdx": 0 # 0 для One-Way Mode
+        }
+
+        result = self._request("POST", "/v5/position/trading-stop", params)
+
+        if str(result.get("retCode")) == "0":
+            print(f"   ✅ [Bybit] Stop Loss successfully updated to {stop_loss_price_str} (Breakeven)")
+        # Ошибка 34040 означает, что стоп уже стоит на этой цене (Not modified)
+        elif str(result.get("retCode")) != "34040":
+            print(f"   ❌ [Bybit] Failed to update SL: {result.get('retMsg')}")
+
+
+    def update_stop_loss_to_breakeven(self, instrument_id, atr_value):
+        """
+        Переводит сделку в безубыток.
+        Если профит достигает 1.5 ATR (половина пути до TP = 3.0 ATR),
+        SL передвигается на среднюю цену входа (avgPrice).
+        """
+        symbol = self._format_symbol(instrument_id)
+        params = {"category": "linear", "symbol": symbol, "settleCoin": "USDT"}
+
+        # Получаем список активных позиций
+        result = self._request("GET", "/v5/position/list", params)
+
+        if str(result.get("retCode")) == "0":
+            positions = result.get("result", {}).get("list", [])
+            active_positions = [p for p in positions if float(p.get("size", "0")) > 0]
+
+            for pos in active_positions:
+                side = pos.get('side')
+                avg_price_str = pos.get('avgPrice') # Строка с точной ценой входа от биржи
+
+                avg_price = float(avg_price_str)
+                mark_price = float(pos.get('markPrice', '0'))
+
+                sl_str = pos.get('stopLoss', '0')
+                current_sl = float(sl_str) if sl_str else 0.0
+
+                threshold = 1.5 * atr_value # Порог срабатывания
+
+                # 1. Логика для LONG
+                if side == "Buy":
+                    profit_distance = mark_price - avg_price
+                    # Профит больше порога И текущий стоп все еще ниже цены входа
+                    if profit_distance >= threshold and current_sl < avg_price:
+                        print(f"\n🛡️ Breakeven triggered! Profit > 1.5 ATR. Moving SL to {avg_price_str} for LONG {symbol}")
+                        self._set_trading_stop(symbol, avg_price_str)
+
+                # 2. Логика для SHORT
+                elif side == "Sell":
+                    profit_distance = avg_price - mark_price
+                    # Профит больше порога И текущий стоп все еще выше цены входа (или равен 0)
+                    if profit_distance >= threshold and (current_sl > avg_price or current_sl == 0):
+                        print(f"\n🛡️ Breakeven triggered! Profit > 1.5 ATR. Moving SL to {avg_price_str} for SHORT {symbol}")
+                        self._set_trading_stop(symbol, avg_price_str)
+
     def _format_symbol(self, instrument_id):
         """ Converts OKX style 'SOL-USDT' to Bybit style 'SOLUSDT' """
         if instrument_id:
