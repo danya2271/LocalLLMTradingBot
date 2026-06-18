@@ -35,8 +35,8 @@ def parse_and_execute_commands(trader, instrument_id, llm_response, current_pric
         # Настройки риск-менеджмента
         sl_multiplier = 2.0  # Стоп-лосс = 2 * ATR
         tp_multiplier = 3.0  # Тейк-профит = 3 * ATR (Риск/Прибыль 1:1.5)
-        long_multiplier = 0.985
-        short_multiplier = 1.015
+        long_multiplier = 0.996
+        short_multiplier = 1.004
 
         if action == 'BUY':
             # 1. ROUND PRICES FOR BYBIT (Max 3-4 decimal places for SOL)
