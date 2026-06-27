@@ -55,6 +55,21 @@ def timeout_old_orders():
         """)
         conn.commit()
 
+def _to_float(value):
+    """ Coerce a possibly-string/comma-decimal/null price into a float, or None. """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if value else None
+    try:
+        s = str(value).strip().replace(',', '.')
+        if s.lower() in ('', 'null', 'none'):
+            return None
+        f = float(s)
+        return f if f > 0 else None
+    except (ValueError, TypeError):
+        return None
+
 def process_extracted_data(extracted_data):
     symbol = extracted_data.get("symbol")
 
@@ -62,9 +77,9 @@ def process_extracted_data(extracted_data):
         symbol = None
 
     direction = extracted_data.get("direction")
-    entry_price = extracted_data.get("entry_price")
-    take_profit = extracted_data.get("take_profit")
-    stop_loss = extracted_data.get("stop_loss")
+    entry_price = _to_float(extracted_data.get("entry_price"))
+    take_profit = _to_float(extracted_data.get("take_profit"))
+    stop_loss = _to_float(extracted_data.get("stop_loss"))
 
     # If the LLM returned absolutely nothing useful, skip
     if not symbol and direction is None and not entry_price and not take_profit and not stop_loss:
@@ -73,12 +88,23 @@ def process_extracted_data(extracted_data):
     with get_connection() as conn:
         cur = conn.cursor()
 
-        # Find the most recent PENDING order within the last 10 minutes
-        cur.execute("""
-            SELECT * FROM orders
-            WHERE status = 'PENDING' AND last_updated >= datetime('now', '-10 minutes')
-            ORDER BY id DESC LIMIT 1
-        """)
+        # Find the most recent PENDING order within the last 10 minutes that this
+        # message can legitimately belong to: either it has no symbol yet, or its
+        # symbol matches the incoming one. This prevents follow-up TP/SL or a new
+        # coin's signal from attaching to an unrelated pending order.
+        if symbol:
+            cur.execute("""
+                SELECT * FROM orders
+                WHERE status = 'PENDING' AND last_updated >= datetime('now', '-10 minutes')
+                AND (symbol IS NULL OR symbol = ?)
+                ORDER BY id DESC LIMIT 1
+            """, (symbol,))
+        else:
+            cur.execute("""
+                SELECT * FROM orders
+                WHERE status = 'PENDING' AND last_updated >= datetime('now', '-10 minutes')
+                ORDER BY id DESC LIMIT 1
+            """)
         pending_order = cur.fetchone()
 
         if pending_order:
@@ -126,4 +152,11 @@ def mark_order_placed(order_id):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("UPDATE orders SET status = 'PLACED' WHERE id = ?", (order_id,))
+        conn.commit()
+
+def mark_order_failed(order_id):
+    """ Marks an order terminally failed (invalid params / permanent reject) so it is not retried forever. """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE orders SET status = 'FAILED' WHERE id = ?", (order_id,))
         conn.commit()

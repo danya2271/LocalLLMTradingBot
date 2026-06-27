@@ -2,126 +2,125 @@ import json
 import re
 from Get_market import get_okx_current_price
 from Config import *
-from TelegramInteract import get_slippage_config
 from Bybitinteract import BybitTrader
-from bybit_config import BYBIT_API_KEY, BYBIT_SECRET_KEY, BYBIT_IS_DEMO
-import math
+from bybit_config import (
+    BYBIT_API_KEY, BYBIT_SECRET_KEY, BYBIT_IS_DEMO,
+    LEVERAGE, RISK_FRACTION, MAX_MARGIN_FRACTION,
+)
 
 trader = BybitTrader(BYBIT_API_KEY, BYBIT_SECRET_KEY, is_demo=BYBIT_IS_DEMO)
 
+# Risk-management parameters (ATR-based)
+SL_MULTIPLIER = 2.0  # Stop-loss = 2 * ATR
+TP_MULTIPLIER = 3.0  # Take-profit = 3 * ATR (Risk/Reward 1:1.5)
+LONG_ENTRY_MULTIPLIER = 0.996   # Place long limit ~0.4% below market (maker side)
+SHORT_ENTRY_MULTIPLIER = 1.004  # Place short limit ~0.4% above market (maker side)
+
+
+def _compute_sizing(trader, instrument_id, entry_price):
+    """
+    Returns (qty, info_str) sizing notional from FREE margin, leverage and risk fraction.
+    Returns (None, reason) when the trade should be skipped.
+    """
+    available_usdt = trader.get_available_balance(instrument_id)
+    if available_usdt is None:
+        return None, "Balance unavailable (API/network error); skipping cycle"
+    if available_usdt <= 0:
+        return None, f"No free margin available ({available_usdt})"
+
+    # Cap the margin actually committed, then scale to notional by leverage.
+    margin_fraction = min(RISK_FRACTION, MAX_MARGIN_FRACTION)
+    margin_to_use = available_usdt * margin_fraction
+    notional = margin_to_use * LEVERAGE
+
+    if entry_price <= 0:
+        return None, f"Invalid entry price ({entry_price})"
+
+    raw_qty = notional / entry_price
+    info = (f"free={available_usdt:.2f} USDT, margin={margin_to_use:.2f}, "
+            f"lev={LEVERAGE}x, notional={notional:.2f}")
+    return raw_qty, info
+
+
 def parse_and_execute_commands(trader, instrument_id, llm_response, current_price, atr):
     """
-    ATR-based execution logic.
+    ATR-based execution logic. Returns (result_message, wait_seconds).
     """
     print(f"\n--- Processing Strategy ---")
 
+    # Only the JSON extraction is wrapped defensively; execution errors must surface distinctly.
     try:
-        # Пытаемся найти JSON
         json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group(0))
-        else:
+        if not json_match:
             return "❌ No JSON found", 60
-
-        action = data.get('action', 'WAIT').upper()
-        reasoning = data.get('reasoning', '')
-
-        print(f"Decision: {action} | Reason: {reasoning}")
-
-        if action == 'WAIT':
-            return f"Bot decided to WAIT: {reasoning}", 60
-
-        # --- МАТЕМАТИКА НА PYTHON (НЕ НА LLM) ---
-        # Настройки риск-менеджмента
-        sl_multiplier = 2.0  # Стоп-лосс = 2 * ATR
-        tp_multiplier = 3.0  # Тейк-профит = 3 * ATR (Риск/Прибыль 1:1.5)
-        long_multiplier = 0.996
-        short_multiplier = 1.004
-
-        if action == 'BUY':
-            # 1. ROUND PRICES FOR BYBIT (Max 3-4 decimal places for SOL)
-            entry_price = round((current_price * long_multiplier), 3)
-            sl_price = round(entry_price - (atr * sl_multiplier), 3)
-            tp_price = round(entry_price + (atr * tp_multiplier), 3)
-
-            available_usdt = trader.get_available_balance(instrument_id)
-
-            # NOTE: 2.50 means you are trying to use 250% of your balance (Leverage)
-            pct_per_trade = 2.50
-            trade_amount_usdt = available_usdt * pct_per_trade
-
-            if trade_amount_usdt < 2.0:
-                return f"❌ Skip: Balance too low ({trade_amount_usdt:.2f} USDT)", 60
-
-            print(f"Calculated Trade Amount: {trade_amount_usdt:.2f} USDT based on balance {available_usdt}")
-
-            raw_qty = trade_amount_usdt / entry_price
-
-            # 2. ROUND QUANTITY (Bybit requires 1 or 2 decimal places for SOL)
-            qty = round(raw_qty, 1)
-
-            # 3. CAPTURE AND RETURN THE REAL RESULT
-            result = trader.place_limit_order_with_tp_sl(
-                instrument_id=instrument_id,
-                side='buy',
-                size=qty,
-                price=entry_price,
-                take_profit_price=tp_price,
-                stop_loss_price=sl_price
-            )
-            return f"{result} | Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
-
-        elif action == 'SELL':
-            # 1. ROUND PRICES FOR BYBIT
-            entry_price = round((current_price * short_multiplier), 3)
-            sl_price = round(entry_price + (atr * sl_multiplier), 3)
-            tp_price = round(entry_price - (atr * tp_multiplier), 3)
-
-            available_usdt = trader.get_available_balance(instrument_id)
-
-            pct_per_trade = 2.50
-            trade_amount_usdt = available_usdt * pct_per_trade
-
-            if trade_amount_usdt < 2.0:
-                return f"❌ Skip: Balance too low ({trade_amount_usdt:.2f} USDT)", 60
-
-            print(f"Calculated Trade Amount: {trade_amount_usdt:.2f} USDT based on balance {available_usdt}")
-
-            raw_qty = trade_amount_usdt / entry_price
-
-            # 2. ROUND QUANTITY
-            qty = round(raw_qty, 1)
-
-            # 3. CAPTURE AND RETURN THE REAL RESULT
-            result = trader.place_limit_order_with_tp_sl(
-                instrument_id=instrument_id,
-                side='sell',
-                size=qty,
-                price=entry_price,
-                take_profit_price=tp_price,
-                stop_loss_price=sl_price
-            )
-            return f"{result} | Entry: {entry_price}, SL: {sl_price}, TP: {tp_price}", 300
-
+        data = json.loads(json_match.group(0))
     except Exception as e:
-        return f"Error executing: {e}", 60
+        return f"❌ Failed to parse LLM JSON: {e}", 60
 
-    return "No action taken", 60
+    action = data.get('action', 'WAIT').upper()
+    reasoning = data.get('reasoning', '')
+    print(f"Decision: {action} | Reason: {reasoning}")
+
+    if action not in ('BUY', 'SELL'):
+        return f"Bot decided to WAIT: {reasoning}", 60
+
+    if current_price is None or current_price <= 0:
+        return "❌ EXECUTION_ERROR: invalid current price; not trading", 60
+
+    # Guard: never stack onto an existing position or resting order for this symbol.
+    try:
+        if trader.has_open_position(instrument_id) or trader.has_open_order(instrument_id):
+            return f"Skip {action}: existing position/order on {instrument_id}", 300
+    except Exception as e:
+        return f"❌ EXECUTION_ERROR: could not verify existing exposure: {e}", 60
+
+    # Set leverage explicitly so sizing is predictable (idempotent).
+    try:
+        trader.set_leverage(instrument_id, LEVERAGE)
+    except Exception as e:
+        print(f"   ⚠️ set_leverage failed (continuing): {e}")
+
+    side = 'buy' if action == 'BUY' else 'sell'
+    if action == 'BUY':
+        entry_price = current_price * LONG_ENTRY_MULTIPLIER
+        sl_price = entry_price - (atr * SL_MULTIPLIER)
+        tp_price = entry_price + (atr * TP_MULTIPLIER)
+    else:
+        entry_price = current_price * SHORT_ENTRY_MULTIPLIER
+        sl_price = entry_price + (atr * SL_MULTIPLIER)
+        tp_price = entry_price - (atr * TP_MULTIPLIER)
+
+    raw_qty, info = _compute_sizing(trader, instrument_id, entry_price)
+    if raw_qty is None:
+        return f"❌ Skip {action}: {info}", 60
+    print(f"Sizing: {info}")
+
+    # The trader quantizes qty/price to exchange filters and validates before sending.
+    try:
+        result = trader.place_limit_order_with_tp_sl(
+            instrument_id=instrument_id,
+            side=side,
+            size=raw_qty,
+            price=entry_price,
+            take_profit_price=tp_price,
+            stop_loss_price=sl_price,
+        )
+    except Exception as e:
+        return f"❌ EXECUTION_ERROR placing {action}: {e}", 60
+
+    if result.get("ok"):
+        return (f"✅ {action} placed (Order {result.get('orderId')}) | {result.get('retMsg')}", 300)
+    return (f"❌ EXECUTION_ERROR: {action} not placed: {result.get('retMsg')} "
+            f"(Code: {result.get('retCode')})", 60)
+
 
 if __name__ == "__main__":
     trader = BybitTrader(BYBIT_API_KEY, BYBIT_SECRET_KEY, is_demo=BYBIT_IS_DEMO)
-    test_response = """
-    ```json
-    {
-        "reasoning": "Market is volatile, will place orders and wait longer.",
-        "actions": [
-            "BUY[168.06][0.1305][SOL-USDT]",
-            "WAIT[900]"
-        ]
-    }
-    ```
-    """
-    execution_results, llm_wait_time = parse_and_execute_commands(trader, test_response)
+    test_response = '{"reasoning": "test", "action": "WAIT", "confidence": "LOW"}'
+    test_price = float(get_okx_current_price('SOL-USDT') or 0.0)
+    execution_results, llm_wait_time = parse_and_execute_commands(
+        trader, 'SOL-USDT', test_response, test_price, atr=1.0
+    )
     print("\n--- Execution Results ---")
     print(execution_results)
     print(f"\n--- Recommended Wait Time ---")

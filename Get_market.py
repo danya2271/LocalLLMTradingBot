@@ -91,7 +91,7 @@ def get_okx_current_price(instId='BTC-USDT'):
         instId (str): The instrument ID (e.g., 'BTC-USDT').
 
     Returns:
-        str: The last traded price as a string, or an error message.
+        str: The last traded price as a string, or None if it could not be fetched.
     """
     url = f"https://www.okx.com/api/v5/market/ticker?instId={instId}"
 
@@ -122,7 +122,8 @@ def get_okx_current_price(instId='BTC-USDT'):
             print(f"Unexpected error: {e}")
             time.sleep(1)
 
-    return "0.0"
+    # Signal failure explicitly so callers don't trade on a bogus 0.0 price.
+    return None
 
 # --- Example Usage ---
 if __name__ == '__main__':

@@ -1,11 +1,7 @@
 import pandas as pd
 import time
 import threading
-import asyncio
 import json
-from datetime import datetime, timezone
-from Database import init_db, timeout_old_orders, get_ready_orders, mark_order_placed
-from ParseChannel import parse_last_messages, recognize_text_from_message
 from Get_market import get_okx_market_data, get_okx_current_price
 from Logging import log_message
 from llamacppInteract import llamacppBot
@@ -17,7 +13,7 @@ from llamacpp_config import LLM_API_KEY, LLM_HOST
 from TelegramConfig import *
 from TelegramInteract import (
     send_message_to_all_users, get_trading_coin, poll_telegram_updates,
-    get_data_config, get_wait_config
+    get_wait_config
 )
 
 print("Initializing BybitTrader...")
@@ -29,17 +25,24 @@ bot = llamacppBot(LLM_API_KEY, host=LLM_HOST)
 print("LLM Bot initialized successfully!")
 
 def HInfoSend(risk, coin):
-    data_config = get_data_config()
+    raw_price = get_okx_current_price(coin)
+    if raw_price is None:
+        print("❌ OKX price feed unavailable; skipping this cycle.")
+        return 60
+    current_price = float(raw_price)
+    if current_price <= 0:
+        print(f"❌ OKX returned invalid price ({raw_price}); skipping this cycle.")
+        return 60
+
     Bal = trader.get_available_balance(coin)
     print(f"Available Balance for trading: {Bal} USDT")
-    current_price = float(get_okx_current_price(coin))
     btc_market_data = get_okx_market_data(coin)
 
     # Берем данные с самого короткого таймфрейма для торговли (например, 15m)
     df = btc_market_data.get('15m')
 
-    if not isinstance(df, pd.DataFrame):
-        print("Error getting data")
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        print("Error getting market data (missing or empty); skipping cycle")
         return 60
 
     # Извлекаем последние значения
@@ -115,10 +118,22 @@ def HInfoSend(risk, coin):
             action = parsed_json.get("action", "").upper()
 
             # Если LLM сказала BUY, но математика запрещает -> Отменяем
-            if action == "BUY" and (extension_pct >= 1.0 or rsi >= 70 or "PARABOLIC" in trend):
-                print(f"❌ PYTHON GUARDRAIL ACTIVATED: LLM hallucinated! Blocked BUY (RSI: {rsi:.2f}, Ext: {extension_pct:.2f}%)")
+            forced_wait = None
+            if action == "BUY" and (trend != "BULLISH" or extension_pct >= 1.0 or rsi >= 70):
+                print(f"❌ PYTHON GUARDRAIL ACTIVATED: Blocked BUY (Trend: {trend}, RSI: {rsi:.2f}, Ext: {extension_pct:.2f}%)")
+                forced_wait = "Python Guardrails blocked BUY (trend/RSI/overextension)."
+            # Симметричный guardrail для SELL: только при BEARISH и не перепроданности
+            elif action == "SELL" and (trend != "BEARISH" or rsi <= 30):
+                print(f"❌ PYTHON GUARDRAIL ACTIVATED: Blocked SELL (Trend: {trend}, RSI: {rsi:.2f})")
+                forced_wait = "Python Guardrails blocked SELL (trend/RSI oversold)."
+
+            if forced_wait is not None:
                 # Принудительно перезаписываем ответ перед отправкой на исполнение
-                llm_answ = '{\n    "reasoning": "Python Guardrails blocked LLM decision due to overbought metrics.",\n    "action": "WAIT",\n    "confidence": "HIGH"\n}'
+                llm_answ = json.dumps({
+                    "reasoning": forced_wait,
+                    "action": "WAIT",
+                    "confidence": "HIGH",
+                })
     except Exception as e:
         print(f"Guardrail check error: {e}")
     # -------------------------------------------------------------
@@ -139,17 +154,30 @@ if __name__ == '__main__':
     try:
         print("Starting the main trading loop. Press Ctrl+C to stop.")
         while True:
-            current_coin = get_trading_coin()
-            print(f"\n--- Running analysis for {current_coin} ---")
+            try:
+                current_coin = get_trading_coin()
+                print(f"\n--- Running analysis for {current_coin} ---")
 
-            llm_specified_wait_time = HInfoSend(0, current_coin)
+                llm_specified_wait_time = HInfoSend(0, current_coin)
 
-            if llm_specified_wait_time is not None:
-                interval_seconds = llm_specified_wait_time
-                print(f"LLM decided to wait for {interval_seconds} seconds.")
-            else:
-                interval_seconds = get_wait_config() # Fallback to default
-                print(f"LLM did not specify wait time. Using default: {interval_seconds} seconds.")
+                if llm_specified_wait_time is not None:
+                    interval_seconds = llm_specified_wait_time
+                    print(f"Waiting for {interval_seconds} seconds.")
+                else:
+                    interval_seconds = get_wait_config()  # Fallback to default
+                    print(f"No wait time specified. Using default: {interval_seconds} seconds.")
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                # A transient error costs one cycle, not the whole bot.
+                err = f"⚠️ Trading loop error: {e}"
+                print(err)
+                log_message(err)
+                try:
+                    send_message_to_all_users(TELEGRAM_BOT_TOKEN, TELEGRAM_USER_IDS, err)
+                except Exception:
+                    pass
+                interval_seconds = get_wait_config()
 
             print(f"--- Waiting for {interval_seconds / 60:.1f} minutes before next run... ---")
             time.sleep(interval_seconds)

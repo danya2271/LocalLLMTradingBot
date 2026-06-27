@@ -23,24 +23,27 @@ def save_last_update_id(update_id):
     with open(LAST_UPDATE_ID_FILE, 'w') as f:
         f.write(str(update_id))
 
-def send_message_to_all_users(bot_token: str, user_ids: list[int], message: str):
+def send_message_to_all_users(bot_token: str, user_ids: list[int], message: str, parse_mode: str = None):
     """
     Sends a text message to a list of Telegram user IDs using a bot token.
+    parse_mode defaults to None (plain text) so free-form LLM/JSON content is never
+    rejected by Telegram's Markdown parser.
     """
     print(f"Attempting to send a message to {len(user_ids)} user(s)...")
     for user_id in user_ids:
-        send_single_message(bot_token, user_id, message)
+        send_single_message(bot_token, user_id, message, parse_mode=parse_mode)
 
-def send_single_message(bot_token: str, user_id: int, message: str):
+def send_single_message(bot_token: str, user_id: int, message: str, parse_mode: str = None):
     """Sends a single message to a specific user."""
     base_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
         'chat_id': user_id,
         'text': message,
-        'parse_mode': 'Markdown'
     }
+    if parse_mode:
+        payload['parse_mode'] = parse_mode
     try:
-        response = requests.post(base_url, data=payload)
+        response = requests.post(base_url, data=payload, timeout=15)
         response.raise_for_status()
         print(f"Successfully sent message to user ID: {user_id}")
     except requests.exceptions.RequestException as e:
@@ -128,12 +131,12 @@ def handle_telegram_command(bot_token: str, message: dict):
             reply_message = f"Trading coin has been set to `{new_coin.upper()}`."
         else:
             reply_message = "Invalid format. Use `/setcoin COIN-PAIR`."
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif command == '/getcoin':
         current_coin = get_trading_coin()
         reply_message = f"The current trading coin is `{current_coin}`."
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif command == '/setslippage':
         parts = text.split()
@@ -145,12 +148,12 @@ def handle_telegram_command(bot_token: str, message: dict):
                 reply_message = "Invalid format. Use numbers for slippage."
         else:
             reply_message = "Invalid format. Use `/setslippage <buy_%> <sell_%>`."
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif command == '/getslippage':
         config = get_slippage_config()
         reply_message = f"Current slippage: Buy `{config['buy_slippage']}%`, Sell `{config['sell_slippage']}%`"
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif command == '/setdata':
         parts = text.split()
@@ -163,12 +166,12 @@ def handle_telegram_command(bot_token: str, message: dict):
                 reply_message = "Invalid format. Use integers for row counts."
         else:
             reply_message = "Invalid format. Use `/setdata <1m> <5m> <15m> <1H>`."
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif command == '/getdata':
         config = get_data_config()
         reply_message = "Current data fetch settings:\n" + "\n".join([f"- {k}: `{v}`" for k, v in config.items()])
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     # New commands for wait time
     elif command == '/setwait':
@@ -182,12 +185,12 @@ def handle_telegram_command(bot_token: str, message: dict):
                 reply_message = "Invalid format. Please use an integer for seconds."
         else:
             reply_message = "Invalid format. Use `/setwait <seconds>`."
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif command == '/getwait':
         seconds = get_wait_config()
         reply_message = f"The default wait time between loops is `{seconds}` seconds."
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif command == '/help':
         reply_message = (
@@ -201,11 +204,11 @@ def handle_telegram_command(bot_token: str, message: dict):
             "`/setwait <seconds>`\n"
             "`/getwait`"
         )
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
     elif text.startswith('/'):
         reply_message = "Unknown command. Try `/help` for a list of commands."
-        send_single_message(bot_token, chat_id, reply_message)
+        send_single_message(bot_token, chat_id, reply_message, parse_mode="Markdown")
 
 def poll_telegram_updates(bot_token: str):
     """
